@@ -11,47 +11,41 @@ from . import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities
-) -> None:
-    """Set up the light entity from a config entry."""
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities) -> None:
     data = hass.data.get(DOMAIN, {}).get(entry.entry_id)
     if not data:
-        _LOGGER.error(
-            "Tylo Sauna light: controller not found for entry %s", entry.entry_id
-        )
+        _LOGGER.error("Tylo Sauna light: controller not found for entry %s", entry.entry_id)
         return
 
     controller = data["controller"]
-    entity = TyloSaunaLight(controller, entry.entry_id)
-    async_add_entities([entity])
+    async_add_entities([TyloSaunaLight(controller)])
     _LOGGER.info("Tylo Sauna light entity added")
 
 
 class TyloSaunaLight(LightEntity):
-    """Light entity for the sauna light."""
-
     _attr_supported_color_modes = {ColorMode.ONOFF}
     _attr_color_mode = ColorMode.ONOFF
 
-    def __init__(self, controller, entry_id: str) -> None:
+    def __init__(self, controller) -> None:
         self._controller = controller
-        self._entry_id = entry_id
+        self._device_id = getattr(controller, "device_id", controller.host)
         self._attr_name = f"{controller.name} light"
-        self._attr_unique_id = f"tylo_sauna_{controller.host}_light"
+        self._attr_unique_id = f"tylo_sauna_{self._device_id}_light"
 
     @property
     def device_info(self) -> DeviceInfo:
-        """Device information shared between climate, light and number entities."""
         return DeviceInfo(
-            identifiers={(DOMAIN, self._controller.host)},
+            identifiers={(DOMAIN, self._device_id)},
             name=self._controller.name,
             manufacturer="Tylo",
             model="Elite",
         )
 
+    @property
+    def available(self) -> bool:
+        return bool(self._controller.is_online())
+
     async def async_added_to_hass(self) -> None:
-        """Register for state updates from the controller."""
         self._controller.register_callback(self.async_write_ha_state)
 
     @property

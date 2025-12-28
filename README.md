@@ -1,162 +1,174 @@
 # Tylo Sauna – Home Assistant Custom Integration
 
-This custom integration allows you to control and monitor **Tylo Elite** electric saunas
-directly from Home Assistant.
+Local (LAN) Home Assistant integration for **Tylo Elite / Elite WiFi** controllers.
 
-> ⚠️ This integration is **unofficial** and is based on reverse-engineering of the
-> local UDP protocol used by the Tylo Elite controller. Use at your own risk.
-> There is no affiliation with Tylo / TylöHelo / Helo.
+> ⚠️ **Unofficial.** This integration is based on reverse-engineering of the controller’s local UDP protocol.
+> Not affiliated with Tylo / TylöHelo / Helo. Use at your own risk.
 
 ---
 
 ## Features
 
-For each configured sauna the integration creates one **device** with the following entities:
+For each configured controller the integration creates one device with:
 
-- **Climate** – `climate.tylo_sauna`
-  - Target temperature (°C)
-  - Current temperature (°C)
-  - HVAC modes: `off` / `heat`
-  - Attributes:
-    - `stop_after_min` – configured *Stop after* timer (minutes)
-    - `stop_remaining_min` – remaining countdown time (minutes) until auto-off
-    - `telemetry_host` – telemetry source IP (only set if telemetry is received from a different node/IP)
-    - `rx_packets`, `tx_packets` – basic UDP counters (diagnostics)
+### Core control
 
-- **Light** – `light.tylo_sauna_light`
-  - Simple on/off control for the sauna light
+* **Climate** – `climate.tylo_sauna`
 
-- **Number** – `number.tylo_sauna_stop_time`
-  - Auto-off timer *Stop after* (minutes)
-  - Integer slider (0–600 minutes by default)
-  - Changing this value sends the same UDP commands as the official app
+  * HVAC modes: `off` / `heat`
+  * Target temperature (°C)
+  * Current temperature (°C)
+  * Attributes:
 
-- **Sensor** – `sensor.tylo_sauna_time_to_off`
-  - Remaining time until auto-off (minutes)
-  - Mirrors the controller’s internal *Stop after* countdown
+    * `stop_after_min` – configured “Stop after” (minutes)
+    * `stop_remaining_min` – remaining countdown to auto-off (minutes)
+    * `door_fault_pending` – blocks starting heat when acknowledgement is required
 
-All communication happens locally over UDP within your network.  
-No cloud access is required.
+* **Light** – `light.tylo_sauna_light`
+
+  * Simple on/off control
+
+* **Number** – `number.tylo_sauna_stop_time`
+
+  * “Stop after” minutes (0–600 by default)
+  * Sends the same command sequence as the official app
+
+* **Sensor** – `sensor.tylo_sauna_time_to_off`
+
+  * Remaining time until auto-off (minutes)
+
+### Favorites (presets)
+
+* **Select** – `select.tylo_sauna_favorite`
+
+  * Auto-updated list of controller presets (favorites)
+  * Selecting a preset applies it as a “scene”:
+
+    * target temperature
+    * stop-after minutes
+    * light on/off
+  * (Heating start remains a separate action via the climate entity, same as the official app UX.)
+
+### Door safety / faults (diagnostics)
+
+* `sensor.tylo_sauna_fault_code` – last fault code (e.g. door cancellation)
+* `sensor.tylo_sauna_fault_message` – last fault message
+* The integration prevents “silent start failures” by blocking heat start when the controller requires acknowledgement.
+
+### Connectivity & diagnostics (no Activity spam)
+
+* **Binary sensor** – `binary_sensor.tylo_sauna_online` (Diagnostic)
+
+  * Always available, even when the sauna is offline.
+  * Includes diagnostic attributes:
+
+    * `last_seen` / `seconds_ago` (as attributes, not a separate sensor)
+    * configured host/port
+    * effective telemetry source (useful in multi-node setups)
+    * learned control port
+    * rx/tx counters
 
 ---
 
 ## Requirements
 
-- Tylo Elite sauna controller with Wi-Fi enabled
-- Sauna and Home Assistant in the same IP subnet
-- UDP ports:
-  - **42156** – main control/telemetry port
-  - **54377 / 54378** – discovery (same as the official mobile/desktop app)
+* Tylo Elite / Elite WiFi controller reachable on the LAN
+* Home Assistant and the controller must be able to exchange UDP packets
 
-Tested with:
+### Ports (observed)
 
-- Home Assistant Core 2025.x
-- Tylo Elite controller in local mode (not Elite Cloud)
+* Discovery uses UDP **54377 / 54378** (same as the official app)
+* Control/telemetry port is **not always 42156**
+  Some firmwares advertise a different control port via broadcast.
+  **This integration auto-detects the control port from discovery and learns it from incoming telemetry.**
 
 ---
 
 ## Installation
 
-### Manual installation
+### Via HACS (recommended)
 
-1. Copy this repository into your Home Assistant `config` directory:
-
-   ```text
-   config/
-     custom_components/
-       tylo_sauna/
-         __init__.py
-         manifest.json
-         controller.py
-         climate.py
-         light.py
-         number.py
-         sensor.py
-         config_flow.py
-   ```
-
-2. Restart Home Assistant.
-
-3. Go to **Settings → Devices & Services → Add Integration**.
-
-4. Search for **“Tylo Sauna”** and select it.
-
-5. The integration will listen for Tylo UDP broadcasts on the local network
-   (same mechanism as the official app). If a sauna is discovered, it will be
-   shown in the list. You can also choose **Enter IP manually**.
-
-6. Complete the setup wizard. A new device **“Tylo Sauna”** should appear with
-   entities:
-
-   - `climate.tylo_sauna`
-   - `light.tylo_sauna_light`
-   - `number.tylo_sauna_stop_time`
-   - `sensor.tylo_sauna_time_to_off`
-
-### Installation via HACS
-
-After adding this repository as a custom repository in HACS:
-
-1. Open **HACS → Integrations → Custom repositories**.
+1. HACS → Integrations → Custom repositories
 2. Add:
-   - **URL**: `https://github.com/skyer/home-assistant-tylo-sauna`
-   - **Category**: `Integration`
-3. Install **Tylo Sauna** from HACS.
-4. Restart Home Assistant.
-5. Add the integration via **Settings → Devices & Services → Add Integration**.
+
+   * URL: `https://github.com/skyer/home-assistant-tylo-sauna`
+   * Category: Integration
+3. Install **Tylo Sauna**
+4. Restart Home Assistant
+5. Settings → Devices & Services → Add Integration → **Tylo Sauna**
+
+### Manual
+
+Copy `custom_components/tylo_sauna/` into your HA `config/custom_components/` and restart HA.
 
 ---
 
-## Usage
+## Setup (config flow)
 
-### Climate entity
+The integration uses a **two-step** setup:
 
-Use the **climate** entity to:
+1. **Select discovered device** (if discovery works) or choose **Manual**.
+2. **Confirm settings**:
 
-- turn sauna heating on/off (`hvac_mode`),
-- adjust the target temperature in °C,
-- read current temperature, `stop_after_min`, and `stop_remaining_min`.
+   * Name (default is the controller’s advertised name if available)
+   * “Allow telemetry from other IPs (recommended)”
+     Enable this if your system sends telemetry from a different node/IP (common for sauna + steam systems).
 
-The sauna controller implements the actual auto-off logic;  
-Home Assistant simply reflects the configured timer and its remaining time.
+### Docker note
 
-### Light entity
+If you run HA in Docker with bridge networking, UDP broadcast discovery may not work.
+Manual setup still works; the integration can learn the effective control port from incoming packets.
 
-Use the **light** entity to control the sauna light as a simple on/off switch.
+---
 
-### Stop time (auto-off timer)
+## Changing IP / port later
 
-The **number** entity:
+Use **Settings → Devices & Services → Tylo Sauna → Configure** (Options flow) to change:
 
-- `number.tylo_sauna_stop_time` (unit: minutes)
+* host/IP
+* UDP port
+* name
+* “Allow telemetry from other IPs”
 
-controls the same **Stop after** timer that you see on the original Tylo panel/app:
+No need to remove/re-add the integration.
 
-- changing its value sends the same UDP commands as the official app;
-- the sauna will turn heating off automatically when the internal countdown
-  reaches zero.
+---
 
-The **sensor** entity:
+## Upgrading / migration notes
 
-- `sensor.tylo_sauna_time_to_off` (unit: minutes)
+Some releases may change entity/device identifiers to improve long-term stability (e.g., when the controller IP changes).
+If you upgrade from an older version and see duplicated entities (for example `*_2`) or stale `restored/unavailable` entities, the best path is:
 
-exposes the **remaining time** until the sauna turns itself off, based on the
-controller’s internal countdown. This is useful for automations and notifications,
-for example:
+1. Remove the **Tylo Sauna** integration (Settings → Devices & Services).
+2. Restart Home Assistant.
+3. Add the integration again.
 
-- send a notification when `stop_remaining_min < 10`,
-- extend the timer when someone is still using the sauna.
+Alternative (advanced): manually clean up old entities in the entity registry instead of re-adding.
 
 ---
 
 ## Troubleshooting
 
-If the integration is discovered but shows **N/A / no values**, this usually means Home Assistant is not receiving
-telemetry packets back from the controller, or telemetry is coming from a different IP/node than the one discovered.
+### “Discovered but no data / all entities N/A”
+
+Most common causes:
+
+* Controller uses a **different control port** than expected (fixed in 0.2.1 via discovery parsing + port learning).
+* Home Assistant cannot receive UDP replies (firewall, VLAN isolation, guest Wi-Fi, etc.).
+* Telemetry arrives from a different node/IP → enable “Allow telemetry from other IPs”.
+
+Check `binary_sensor.tylo_sauna_online`:
+
+* If `off`, inspect its attributes:
+
+  * `configured_host/port`
+  * `effective_telemetry_host`
+  * `control_port`
+  * `seconds_ago`
 
 ### Enable debug logging
 
-Add this to your `configuration.yaml` (temporarily):
+Add to `configuration.yaml` temporarily:
 
 ```yaml
 logger:
@@ -165,70 +177,33 @@ logger:
     custom_components.tylo_sauna: debug
 ```
 
-Restart Home Assistant, reproduce the problem (open the integration, try heat/light), then attach logs from
-**Settings → System → Logs**.
+Restart HA and reproduce the issue.
 
 ### Packet capture (recommended)
 
-A short packet capture helps identify whether your controller uses a different firmware/protocol variant or whether
-your network blocks UDP replies.
+Short capture helps confirm whether the controller replies and which port it uses.
 
-#### tcpdump on the Home Assistant host
-
-Run this on the machine where Home Assistant actually runs (HA OS SSH add-on, VM host, Docker host, etc.):
+**Best (capture on HA host):**
 
 ```bash
-sudo tcpdump -i <iface> -nn -s0 -w tylo_capture.pcap \
-  'udp and (port 42156 or port 54377 or port 54378)'
+sudo tcpdump -i any -nn -s0 -w tylo_capture.pcapng 'udp and host <SAUNA_IP>'
 ```
 
-- Replace `<iface>` with your active network interface (e.g. `eth0`, `ens18`, `wlan0`).
-- Keep capture running for 30–60 seconds while you:
-  - open the official Tylo app,
-  - toggle heat on/off,
-  - toggle light on/off,
-  - set temperature,
-  - set stop time (auto-off timer).
+Note: do **not** rely on UDP port **42156** being fixed. Some setups use a different control/telemetry port.
+If you capture in Wireshark, filtering by IP is the safest starting point (e.g. `ip.addr == <SAUNA_IP> && udp`).
 
-Stop with `Ctrl+C` and attach `tylo_capture.pcap` to the GitHub issue.
-
-#### Wireshark on a computer in the same LAN
-
-Display filter:
-
-```
-udp.port == 42156 || udp.port == 54377 || udp.port == 54378
-```
-
-Start capture, reproduce actions in the official app, then export `.pcapng` and attach it.
-
-### Wireshark capture guide (recommended)
-
-If you need a more detailed Wireshark guide, see: `Wireshark_capture_guide.md` in this repository.
-
-### Network checklist
-
-- Home Assistant and the sauna controller must be in the **same IP subnet** for local discovery and UDP control.
-- Avoid guest Wi-Fi / client isolation / VLAN separation unless you explicitly route UDP traffic.
-- If you run HA in Docker, ensure networking allows incoming UDP replies (host networking is the simplest).
+Attach the `.pcapng` to the GitHub issue.
 
 ---
 
 ## Notes & limitations
 
-- This integration was tested only with Tylo Elite controllers in local mode.
-  Other Tylo/Tylö models may or may not be compatible.
-- All protocol details are based on reverse-engineered UDP traffic from the
-  official desktop/mobile app. A future firmware update may change the protocol.
-- There is no dedicated error handling for connection loss or controller reboot
-  beyond Home Assistant’s own retry logic.
+* Reverse engineered protocol; firmware updates may change behavior.
+* This project targets Tylo Elite local LAN mode; other models may differ.
 
 ---
 
 ## Disclaimer
 
-This project is a personal reverse-engineering effort and is **not** endorsed,
-supported, or approved by Tylo / TylöHelo / Helo or any related company.
-
-Use at your own risk. Saunas and high-power electric devices can be dangerous.
-Always follow the manufacturer’s safety instructions and your local regulations.
+This project is a personal reverse-engineering effort and is not endorsed by Tylo / TylöHelo / Helo.
+Saunas are high-power devices — follow manufacturer safety guidelines and local regulations.

@@ -8,7 +8,8 @@ If the integration is discovered but shows **N/A / no values**, a short packet c
 Please capture UDP traffic related to Tylo:
 
 - Discovery: UDP **54377 / 54378**
-- Control + telemetry: UDP **42156**
+- Control + telemetry: UDP **42156** is common, but **not guaranteed** (some firmwares/setups use a different port).
+  If in doubt, capture all UDP traffic to/from the sauna IP and we can identify the effective port from packet source ports and payload patterns.
 
 ### Wireshark – basic steps (macOS / Windows)
 
@@ -20,7 +21,7 @@ Please capture UDP traffic related to Tylo:
 4. Apply this **display filter**:
 
    ```
-   udp.port == 42156 || udp.port == 54377 || udp.port == 54378
+   udp.port == 54377 || udp.port == 54378 || udp
    ```
 
    (Tip: you can also use a capture filter, but the display filter is easier.)
@@ -49,7 +50,7 @@ Please capture UDP traffic related to Tylo:
 If you know the sauna IP (example `192.168.1.29`), you can narrow the display filter:
 
 ```
-ip.addr == 192.168.1.29 && (udp.port == 42156 || udp.port == 54377 || udp.port == 54378)
+ip.addr == 192.168.1.29 && udp
 ```
 
 ### Notes

@@ -6,9 +6,11 @@ from homeassistant.components.climate import (
     ClimateEntityFeature,
     HVACMode,
 )
+from homeassistant.components.persistent_notification import async_create as pn_async_create
 from homeassistant.const import UnitOfTemperature, ATTR_TEMPERATURE
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 
 from . import DOMAIN
@@ -19,47 +21,42 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities
 ) -> None:
-    """Set up the climate entity from a config entry."""
     data = hass.data.get(DOMAIN, {}).get(entry.entry_id)
     if not data:
-        _LOGGER.error(
-            "Tylo Sauna climate: controller not found for entry %s", entry.entry_id
-        )
+        _LOGGER.error("Tylo Sauna climate: controller not found for entry %s", entry.entry_id)
         return
 
     controller = data["controller"]
-    entity = TyloSaunaClimate(controller, entry.entry_id)
-    async_add_entities([entity])
+    async_add_entities([TyloSaunaClimate(controller)])
     _LOGGER.info("Tylo Sauna climate entity added")
 
 
 class TyloSaunaClimate(ClimateEntity):
-    """Climate entity for controlling sauna heating."""
-
     _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
     _attr_hvac_modes = [HVACMode.HEAT, HVACMode.OFF]
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_min_temp = 40.0
     _attr_max_temp = 110.0
 
-    def __init__(self, controller, entry_id: str) -> None:
+    def __init__(self, controller) -> None:
         self._controller = controller
-        self._entry_id = entry_id
         self._attr_name = controller.name
-        self._attr_unique_id = f"tylo_sauna_{controller.host}_climate"
+
+        # IMPORTANT: unique_id must be stable across host changes
+        device_id = getattr(controller, "device_id", controller.host)
+        self._attr_unique_id = f"tylo_sauna_{device_id}_climate"
 
     @property
     def device_info(self) -> DeviceInfo:
-        """Device information shared between entities."""
+        device_id = getattr(self._controller, "device_id", self._controller.host)
         return DeviceInfo(
-            identifiers={(DOMAIN, self._controller.host)},
+            identifiers={(DOMAIN, device_id)},
             name=self._controller.name,
             manufacturer="Tylo",
             model="Elite",
         )
 
     async def async_added_to_hass(self) -> None:
-        """Register for state updates from the controller."""
         self._controller.register_callback(self.async_write_ha_state)
 
     @property
@@ -79,29 +76,32 @@ class TyloSaunaClimate(ClimateEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """
-        Extra attributes:
-        - stop_after_min (configured)
-        - stop_remaining_min (countdown)
-        - telemetry_host (if learned in relaxed mode)
-        - rx_packets / tx_packets (basic diagnostics)
-        """
         attrs: dict[str, Any] = {}
+
+        # Important: climate is for control/status, not network diagnostics.
+        # Network details (IPs/ports/telemetry_host/counters) belong to the diagnostic binary_sensor.
         if self._controller.stop_cfg_min is not None:
             attrs["stop_after_min"] = self._controller.stop_cfg_min
         if self._controller.stop_rem_min is not None:
             attrs["stop_remaining_min"] = self._controller.stop_rem_min
 
-        if getattr(self._controller, "telemetry_host", None):
-            attrs["telemetry_host"] = self._controller.telemetry_host
-
-        attrs["rx_packets"] = getattr(self._controller, "rx_packets", 0)
-        attrs["tx_packets"] = getattr(self._controller, "tx_packets", 0)
+        # Door / fault state
+        attrs["door_fault_pending"] = bool(getattr(self._controller, "door_fault_pending", False))
 
         return attrs
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         if hvac_mode == HVACMode.HEAT:
+            if getattr(self._controller, "door_fault_pending", False):
+                fault = getattr(self._controller, "last_fault", None)
+                msg = fault.message if fault and fault.message else "Door fault requires acknowledgement"
+                pn_async_create(
+                    self.hass,
+                    msg,
+                    title=f"{self._attr_name}: blocked",
+                    notification_id=f"tylo_sauna_blocked_{getattr(self._controller,'device_id', self._controller.host)}",
+                )
+                raise HomeAssistantError("Tylo Sauna start blocked: acknowledge door fault first")
             self._controller.heat_on()
         elif hvac_mode == HVACMode.OFF:
             self._controller.heat_off()

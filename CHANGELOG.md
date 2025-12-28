@@ -1,38 +1,95 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+## [0.2.1] - 2025-12-29
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+### Added
+
+* **Favorites (presets) support**:
+
+  * Auto-refresh favorites from controller snapshots.
+  * New entity: `select.tylo_sauna_favorite` to apply a preset as a “scene” (temperature + stop-after + light).
+* **Door safety / fault telemetry (reverse-engineered)**:
+
+  * Parses controller fault/events (e.g. door-open cancellation codes **19/20**).
+  * Exposes diagnostic sensors:
+
+    * `sensor.tylo_sauna_fault_code`
+    * `sensor.tylo_sauna_fault_message`
+  * `climate` blocks starting heating when the controller requires acknowledgement (prevents “silent fail”).
+* **Diagnostics & connectivity UX**:
+
+  * New diagnostic entity: `binary_sensor.tylo_sauna_online` (always available) with:
+
+    * online/offline state
+    * `last_seen` + `seconds_ago` (as attributes)
+    * configured endpoint (host/port), effective telemetry source, learned control port, rx/tx counters
+* **Options flow**:
+
+  * Update host/port/name and “Allow telemetry from other IPs” without removing the integration.
+* **Improved config flow UX**:
+
+  * Two-step setup flow (pick device → confirm settings).
+  * Better naming defaults (uses controller name from discovery when available).
+  * Clearer user-facing label for relaxed telemetry: **“Allow telemetry from other IPs (recommended)”**.
+  * English translations for config/option forms.
+
+### Changed
+
+* **Discovery now reads the controller’s advertised control port** from broadcast announces
+  (fixes setups where the control port is *not* 42156).
+* **Control port is learned automatically** from incoming Tylo packets (helps Docker and firmware variants).
+* **Multi-device on same host** (sauna + steam) is supported in discovery and manual mode.
+* **Device identity is stable across host changes** (uses config entry id for device identifiers).
+
+### Fixed
+
+* “Discovered but no data” cases where the integration sent keepalives/commands to the wrong UDP port.
+* Reduced startup issues by avoiding long-running bootstrap-blocking loops; periodic jobs are handled safely.
+* Improved offline UX: control entities become unavailable when the controller is offline; diagnostic entity remains available.
+
+### Notes (migration)
+
+* **Recommended upgrade path (best experience): remove and re-add the integration.**
+  This release changes entity/device identifiers for stability (e.g., host/IP changes), which can cause duplicated entities (`*_2`) in the entity registry after an upgrade.
+  The cleanest path is:
+  1) Remove the **Tylo Sauna** integration (Devices & Services)
+  2) Restart Home Assistant
+  3) Add the integration again
+* Alternative: manually remove old `restored/unavailable` entities from the entity registry if you prefer not to re-add.
 
 ## [0.1.1] - 2025-12-21
 
 ### Added
-- Relaxed telemetry source filtering (optional):
-  - Allows telemetry to be received from a different IP/node than the discovered control host.
-  - Pins `telemetry_host` after the first valid telemetry packet.
-  - Logs GUID mismatches when a GUID is present in the payload.
-- Diagnostics:
-  - `telemetry_host`, `rx_packets`, `tx_packets` exposed as climate extra attributes.
-  - Additional debug logs around telemetry source filtering.
+
+* Relaxed telemetry source filtering (optional):
+
+  * Allows telemetry to be received from a different IP/node than the discovered control host.
+  * Pins `telemetry_host` after the first valid telemetry packet.
+  * Logs GUID mismatches when a GUID is present in the payload.
+* Diagnostics:
+
+  * `telemetry_host`, `rx_packets`, `tx_packets` exposed as climate extra attributes.
+  * Additional debug logs around telemetry source filtering.
 
 ### Fixed
-- Improved support for multi-node setups (e.g. sauna + steam) where telemetry may originate from a different node/IP.
+
+* Improved support for multi-node setups (e.g. sauna + steam) where telemetry may originate from a different node/IP.
 
 ## [0.1.0] - 2025-12-08
 
 ### Added
 
-- Initial release of the Tylo Sauna integration for Home Assistant.
-- Climate entity:
-  - Heating on/off (`heat` / `off` HVAC modes)
-  - Target & current temperature in °C
-  - Attributes:
-    - `stop_after_min` – configured *Stop after* timer (minutes)
-    - `stop_remaining_min` – remaining countdown to auto-off (minutes)
-- Light entity for sauna light (on/off).
-- Number entity for *Stop after* timer configuration (minutes).
-- Sensor entity for remaining time to auto-off (minutes).
-- Local UDP protocol implementation (no cloud required).
-- Basic UDP discovery in the config flow (same mechanism as the official app).
+* Initial release of the Tylo Sauna integration for Home Assistant.
+* Climate entity:
 
+  * Heating on/off (`heat` / `off` HVAC modes)
+  * Target & current temperature in °C
+  * Attributes:
+
+    * `stop_after_min` – configured *Stop after* timer (minutes)
+    * `stop_remaining_min` – remaining countdown to auto-off (minutes)
+* Light entity for sauna light (on/off).
+* Number entity for *Stop after* timer configuration (minutes).
+* Sensor entity for remaining time to auto-off (minutes).
+* Local UDP protocol implementation (no cloud required).
+* Basic UDP discovery in the config flow (same mechanism as the official app).

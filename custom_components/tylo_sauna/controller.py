@@ -1,10 +1,22 @@
 import asyncio
 import logging
 import re
+from dataclasses import dataclass
+from typing import Any
+import time
+from homeassistant.util import dt as dt_util
+from datetime import timedelta
+from homeassistant.helpers.event import async_track_time_interval
+
+from .const import DEFAULT_CONTROL_PORT, UDP_DISCOVERY_PORTS
+
 
 _LOGGER = logging.getLogger(__name__)
 
 KEEPALIVE_INTERVAL = 15  # seconds, matches official app behavior
+ONLINE_TIMEOUT_S = 300         # consider online if a packet was received within the last N seconds
+
+
 
 # HELLO / INIT packets reverse engineered from the official app
 HELLO_PAYLOAD = bytes.fromhex(
@@ -74,13 +86,205 @@ def _extract_guid_from_payload(data: bytes) -> str | None:
     m = UUID_RE.search(data)
     if not m:
         return None
-    return m.group(0).decode("ascii")
+    try:
+        return m.group(0).decode("ascii")
+    except Exception:  # noqa: BLE001
+        return None
+
+
+# Favorites / presets (Favourites in the Tylo app)
+FAVORITES_REQ = bytes.fromhex("d23e03089303")  # request favorites list (app uses request_id=403)
+FAVORITES_SNAPSHOT_FIELD = 2040  # c2 7f
+
+# Fault events (door cancel etc.)
+FAULT_EVENT_FIELD = 2110  # f2 83 01
+FAULT_ACK_FIELD = 1120    # 82 46
+
+DOOR_FAULT_CODES = {19, 20}
+STATE_PENDING_ACK = 13
+STATE_ACKED = 10
+
+TEMP_SCALE = 9  # protocol uses temp_c * 9
+
+
+@dataclass(frozen=True)
+class Favorite:
+    slot: int
+    enabled: bool
+    name: str = ""
+    target_temp_c: float | None = None
+    stop_after_min: int | None = None
+    light_on: bool | None = None
+
+
+@dataclass(frozen=True)
+class FaultEvent:
+    code: int
+    state: int
+    detail: int | None
+    message: str
+    message_bytes: bytes
+
+
+def _pb_iter_fields(buf: bytes):
+    """Iterate protobuf fields: yields (field_no, wire_type, value)."""
+    i = 0
+    while i < len(buf):
+        key, i = _decode_varint(buf, i)
+        if key is None:
+            return
+        field_no = int(key) >> 3
+        wt = int(key) & 7
+
+        if wt == 0:  # varint
+            v, i = _decode_varint(buf, i)
+            if v is None:
+                return
+            yield field_no, wt, int(v)
+        elif wt == 2:  # length-delimited
+            ln, i = _decode_varint(buf, i)
+            if ln is None:
+                return
+            ln = int(ln)
+            raw = buf[i : i + ln]
+            i += ln
+            yield field_no, wt, raw
+        elif wt == 5:  # 32-bit
+            raw = buf[i : i + 4]
+            i += 4
+            yield field_no, wt, raw
+        elif wt == 1:  # 64-bit
+            raw = buf[i : i + 8]
+            i += 8
+            yield field_no, wt, raw
+        else:
+            # Unsupported
+            return
+
+
+def _pb_collect(buf: bytes) -> dict[int, list[tuple[int, Any]]]:
+    out: dict[int, list[tuple[int, Any]]] = {}
+    for f, wt, v in _pb_iter_fields(buf):
+        out.setdefault(f, []).append((wt, v))
+    return out
+
+
+def _pb_first_varint(msg: dict[int, list[tuple[int, Any]]], n: int) -> int | None:
+    for wt, v in msg.get(n, []):
+        if wt == 0:
+            return int(v)
+    return None
+
+
+def _pb_all_varints(msg: dict[int, list[tuple[int, Any]]], n: int) -> list[int]:
+    res: list[int] = []
+    for wt, v in msg.get(n, []):
+        if wt == 0:
+            res.append(int(v))
+    return res
+
+
+def parse_favorites_snapshot(payload: bytes) -> dict[int, Favorite]:
+    """Parse favorites snapshot (field 2040, c2 7f...)."""
+    top = _pb_collect(payload)
+    out: dict[int, Favorite] = {}
+
+    for wt, raw in top.get(FAVORITES_SNAPSHOT_FIELD, []):
+        if wt != 2:
+            continue
+        entry = _pb_collect(raw)
+        slot = _pb_first_varint(entry, 1)
+        enabled = _pb_first_varint(entry, 2)
+
+        if slot is None:
+            continue
+
+        if enabled != 1:
+            out[int(slot)] = Favorite(slot=int(slot), enabled=False)
+            continue
+
+        name = bytes(_pb_all_varints(entry, 3)).decode("utf-8", errors="replace")
+        temp_scaled = _pb_first_varint(entry, 5)
+        stop_after = _pb_first_varint(entry, 6)
+        light = _pb_first_varint(entry, 7)
+
+        out[int(slot)] = Favorite(
+            slot=int(slot),
+            enabled=True,
+            name=name,
+            target_temp_c=(float(temp_scaled) / TEMP_SCALE) if temp_scaled is not None else None,
+            stop_after_min=int(stop_after) if stop_after is not None else None,
+            light_on=(bool(light) if light is not None else None),
+        )
+
+    return out
+
+
+def parse_fault_event(payload: bytes) -> FaultEvent | None:
+    """Parse fault event (field 2110, f2 83 01...)."""
+    top = _pb_collect(payload)
+    items = top.get(FAULT_EVENT_FIELD, [])
+    if not items:
+        return None
+
+    wt, raw = items[0]
+    if wt != 2:
+        return None
+
+    msg = _pb_collect(raw)
+    code = _pb_first_varint(msg, 1)
+    state = _pb_first_varint(msg, 2)
+    detail = _pb_first_varint(msg, 3)
+
+    if code is None or state is None:
+        return None
+
+    msg_bytes = bytes(_pb_all_varints(msg, 5))
+    message = msg_bytes.decode("utf-8", errors="replace")
+
+    return FaultEvent(
+        code=int(code),
+        state=int(state),
+        detail=int(detail) if detail is not None else None,
+        message=message,
+        message_bytes=msg_bytes,
+    )
+
+
+def _pb_encode_key(field_no: int, wire_type: int) -> bytes:
+    return _encode_varint((int(field_no) << 3) | int(wire_type))
+
+
+def _pb_encode_varint_field(field_no: int, value: int) -> bytes:
+    return _pb_encode_key(field_no, 0) + _encode_varint(int(value))
+
+
+def _pb_encode_bytes_field(field_no: int, raw: bytes) -> bytes:
+    return _pb_encode_key(field_no, 2) + _encode_varint(len(raw)) + raw
+
+
+def encode_fault_ack(fault: FaultEvent) -> bytes:
+    """Encode ACK packet like the official app (field1120)."""
+    body = bytearray()
+    body += _pb_encode_varint_field(1, fault.code)
+    body += _pb_encode_varint_field(2, STATE_PENDING_ACK)  # app uses 13 in ack request
+    body += _pb_encode_varint_field(3, 21)                 # observed in app ack
+    for ch in (fault.message_bytes or fault.message.encode("utf-8", errors="ignore")):
+        body += _pb_encode_varint_field(5, int(ch))
+    body += _pb_encode_varint_field(6, 0)
+    return _pb_encode_bytes_field(FAULT_ACK_FIELD, bytes(body))
 
 
 def _looks_like_tylo_telemetry(data: bytes) -> bool:
     """
     Heuristic check to avoid accepting random UDP noise when relaxed mode is enabled.
     """
+    # Allow known non-telemetry packets that we still want to accept in relaxed mode
+    if data.startswith(b"\xc2\x7f"):  # favorites snapshot (field 2040)
+        return True
+    if data.startswith(b"\xf2\x83\x01"):  # fault event (field 2110)
+        return True
+
     markers = (
         b"\xd2\x7d\x05\x08\x0a\x10",  # Tset
         b"\xd2\x7d\x05\x08\x0c\x10",  # Tcur
@@ -119,32 +323,47 @@ class SaunaController:
     """
     Local UDP controller for Tylo Elite.
 
-    Relaxed telemetry mode:
-    - strict: accept telemetry only from configured host
-    - relaxed: accept telemetry from any IP that looks like Tylo telemetry,
-      then pin telemetry_host to the first valid sender
+    The official app sends HELLO 3 times, INIT_SHORT, then periodic KEEPALIVE (same INIT_SHORT).
+    Telemetry packets are received asynchronously.
     """
 
     def __init__(
         self,
         hass,
-        host: str,
-        port: int,
         name: str,
+        host: str,
+        port: int = 54377,
         guid: str | None = None,
-        relaxed_telemetry: bool = True,
-    ) -> None:
+        relaxed_telemetry: bool = False,
+    ):
         self._hass = hass
+        self.name = name
         self.host = host
         self.port = port
-        self.name = name
+        # Configured port (from UI). Actual control port may be learned from src_port.
+        self.configured_port = int(port)
+        self.control_port = int(port)
+        # Last seen telemetry (for online/last_seen sensors)
+        self.last_rx_dt = None  # datetime in UTC
+
+        self.last_rx_ip: str | None = None
+        self.last_rx_port: int | None = None
+
+        self._unsub_watchdog = None
+        self._unsub_keepalive = None
+        self._online_cached = False
+        self._last_publish_monotonic = time.monotonic()
+
+        # If user configured discovery port, probe the known control port too (common on Elite).
+        self._probe_ports: set[int] = {self.control_port}
+        if self.control_port in UDP_DISCOVERY_PORTS:
+            self._probe_ports |= {DEFAULT_CONTROL_PORT, *UDP_DISCOVERY_PORTS}
 
         self.guid = guid
         self.relaxed_telemetry = relaxed_telemetry
 
         self._transport: asyncio.DatagramTransport | None = None
         self._protocol: SaunaProtocol | None = None
-        self._keepalive_task: asyncio.Task | None = None
 
         # Learned telemetry sender (may differ from configured host)
         self.telemetry_host: str | None = None
@@ -157,12 +376,20 @@ class SaunaController:
         self.stop_cfg_min: int | None = None   # configured Stop after (minutes)
         self.stop_rem_min: int | None = None   # remaining time to auto-off (minutes)
 
+        # Faults / safety events
+        self.last_fault: FaultEvent | None = None
+        self.door_fault_pending: bool = False
+
+        # Favorites / presets
+        self.favorites: dict[int, Favorite] = {}
+        self.last_selected_favorite_slot: int | None = None
+
         # Diagnostics
-        self.rx_packets: int = 0
-        self.tx_packets: int = 0
+        self.rx_packets = 0
+        self.tx_packets = 0
         self.last_rx_monotonic: float | None = None
 
-        # Entity callbacks (climate, light, number, sensor)
+        # Callbacks to notify entities
         self._callbacks: list[callable] = []
 
     async def async_start(self) -> None:
@@ -174,54 +401,113 @@ class SaunaController:
             lambda: SaunaProtocol(self),
             local_addr=("0.0.0.0", 0),
         )
-
+        self.start_watchdog()
         self._hass.create_task(self._async_init_sequence())
 
     async def _async_init_sequence(self) -> None:
-        await asyncio.sleep(0.5)
-        self._send(HELLO_PAYLOAD, "HELLO 1")
+        self._send_probe(HELLO_PAYLOAD, "HELLO 1")
         await asyncio.sleep(0.1)
-        self._send(HELLO_PAYLOAD, "HELLO 2")
+        self._send_probe(HELLO_PAYLOAD, "HELLO 2")
         await asyncio.sleep(0.1)
-        self._send(HELLO_PAYLOAD, "HELLO 3")
+        self._send_probe(HELLO_PAYLOAD, "HELLO 3")
         await asyncio.sleep(0.1)
-        self._send(INIT_SHORT, "INIT_SHORT")
+        self._send_probe(INIT_SHORT, "INIT_SHORT")
+        await asyncio.sleep(0.1)
+        self.request_favorites()
 
-    async def _keepalive_loop(self) -> None:
-        try:
-            while True:
-                await asyncio.sleep(KEEPALIVE_INTERVAL)
-                self._send(INIT_SHORT, "KEEPALIVE")
-        except asyncio.CancelledError:
-            _LOGGER.info("Tylo Sauna: keepalive loop cancelled")
-            raise
+    def is_online(self) -> bool:
+        last = getattr(self, "last_rx_monotonic", None)
+        if last is None:
+            return False
+        return (time.monotonic() - float(last)) <= ONLINE_TIMEOUT_S
 
-    async def async_start_keepalive(self) -> None:
-        if self._keepalive_task is not None and not self._keepalive_task.done():
+
+    def start_watchdog(self) -> None:
+        if self._unsub_watchdog is not None:
             return
-        _LOGGER.info("Tylo Sauna: starting keepalive loop")
-        self._keepalive_task = self._hass.create_task(self._keepalive_loop())
 
-    # === Network events ===
+        async def _tick(_now):
+            online = self.is_online()
+            now_m = time.monotonic()
 
-    def _send(self, payload: bytes, desc: str = "") -> None:
+            publish = False
+            if online != self._online_cached:
+                self._online_cached = online
+                publish = True
+
+            # once per minute publish a "heartbeat" so online/offline can update on its own
+            if (now_m - self._last_publish_monotonic) >= 60:
+                publish = True
+
+            if publish:
+                self._last_publish_monotonic = now_m
+                self._notify_listeners()
+
+        self._unsub_watchdog = async_track_time_interval(
+            self._hass, _tick, timedelta(seconds=10)
+        )
+
+    def start_keepalive(self) -> None:
+        if self._unsub_keepalive is not None:
+            return
+
+        async def _tick(_now):
+            if not self._transport:
+                return
+            self._send(INIT_SHORT, "KEEPALIVE")
+
+        self._unsub_keepalive = async_track_time_interval(
+            self._hass, _tick, timedelta(seconds=KEEPALIVE_INTERVAL)
+        )
+
+    async def async_stop(self) -> None:
+        if self._unsub_keepalive:
+            self._unsub_keepalive()
+            self._unsub_keepalive = None
+
+        if self._unsub_watchdog:
+            self._unsub_watchdog()
+            self._unsub_watchdog = None
+
+        if self._transport:
+            self._transport.close()
+            self._transport = None
+
+
+
+    def _send(self, payload: bytes, desc: str = "", port: int | None = None) -> None:
         if not self._transport:
             _LOGGER.warning("Tylo Sauna: transport not ready, cannot send %s", desc or "")
             return
-        self._transport.sendto(payload, (self.host, self.port))
+
+        dst_port = int(port) if port is not None else int(self.control_port)
+        self._transport.sendto(payload, (self.host, dst_port))
         self.tx_packets += 1
         if desc:
-            _LOGGER.debug("Tylo Sauna: send %s (%d bytes)", desc, len(payload))
+            _LOGGER.debug("Tylo Sauna: send %s (%d bytes) -> %s:%s", desc, len(payload), self.host, dst_port)
+
+    def _send_probe(self, payload: bytes, desc: str = "") -> None:
+        """Send init packets to a small set of candidate ports when port is uncertain."""
+        ports = sorted(self._probe_ports) if self._probe_ports else [self.control_port]
+        for p in ports:
+            suffix = f" (port {p})" if len(ports) > 1 else ""
+            self._send(payload, desc + suffix, port=p)
 
     def connection_made(self, transport: asyncio.DatagramTransport) -> None:
         sockname = transport.get_extra_info("sockname")
         _LOGGER.info("Tylo Sauna: UDP socket bound on %s", sockname)
 
+        # Start periodic jobs once transport exists
+        self.start_keepalive()
+        self.start_watchdog()
+
+
     def connection_lost(self, exc: Exception | None) -> None:
         _LOGGER.info("Tylo Sauna: connection lost: %s", exc)
 
     def datagram_received(self, data: bytes, addr) -> None:
-        src_ip, _src_port = addr
+        src_ip, src_port = addr
+
 
         if not self.relaxed_telemetry:
             # Strict mode: only accept telemetry from configured host
@@ -264,9 +550,64 @@ class SaunaController:
                         src_ip, self.host, src_ip, pkt_guid or "n/a"
                     )
 
+        # Learn actual control port from incoming Tylo packets (helps Docker users who kept discovery port).
+        self._maybe_learn_control_port(src_port, data)
+
+        self.last_rx_ip = src_ip
+        self.last_rx_port = int(src_port)
+
         self.rx_packets += 1
-        self.last_rx_monotonic = asyncio.get_running_loop().time()
+        self.last_rx_monotonic = time.monotonic()
+        self.last_rx_dt = dt_util.utcnow()
+
+
+        # --- Fault events (door cancel etc.) ---
+        if data.startswith(b"\xf2\x83\x01") or b"\xf2\x83\x01" in data:
+            fault = parse_fault_event(data)
+            if fault is not None:
+                prev_pending = self.door_fault_pending
+                prev_fault = self.last_fault
+                self.last_fault = fault
+                self.door_fault_pending = (
+                    fault.code in DOOR_FAULT_CODES and fault.state == STATE_PENDING_ACK
+                )
+                if prev_pending != self.door_fault_pending or prev_fault != self.last_fault:
+                    _LOGGER.info(
+                        "Tylo Sauna fault: code=%s state=%s pending_ack=%s msg=%s",
+                        fault.code,
+                        fault.state,
+                        self.door_fault_pending,
+                        fault.message,
+                    )
+                    self._notify_listeners()
+                return
+
+        # --- Favorites snapshot ---
+        if data.startswith(b"\xc2\x7f"):
+            favs = parse_favorites_snapshot(data)
+            if favs and favs != self.favorites:
+                self.favorites = favs
+                _LOGGER.info("Tylo Sauna: favorites updated (%d slots)", len(favs))
+                self._notify_listeners()
+            return
+
         self._handle_telemetry(data)
+
+    def _maybe_learn_control_port(self, src_port: int, data: bytes) -> None:
+        # Only learn from packets that look like Tylo telemetry/config/events.
+        if not _looks_like_tylo_telemetry(data):
+            return
+
+        src_port = int(src_port)
+        if src_port != int(self.control_port):
+            old = int(self.control_port)
+            self.control_port = src_port
+            self._probe_ports = {self.control_port}
+            _LOGGER.warning(
+                "Tylo Sauna: learned control_port=%s from incoming packet (was %s). "
+                "Commands will be sent to %s:%s",
+                self.control_port, old, self.host, self.control_port
+            )
 
     # === Telemetry parsing ===
 
@@ -374,6 +715,10 @@ class SaunaController:
 
     # --- Commands ---
 
+    def request_favorites(self) -> None:
+        """Request favorites list from the controller."""
+        self._send(FAVORITES_REQ, "REQ_FAVORITES")
+
     def light_on(self) -> None:
         self._send(LIGHT_ON_PAYLOAD, "LIGHT ON")
 
@@ -402,3 +747,39 @@ class SaunaController:
         self._send(p1, f"SETSTOP {m} min (cfg)")
         await asyncio.sleep(0.02)
         self._send(p2, "SETSTOP aux")
+
+    async def async_apply_favorite(self, slot: int, start: bool = False) -> None:
+        """Apply a favorite preset as a 'scene' (temp + stop-after + light), optionally start."""
+        fav = self.favorites.get(int(slot))
+        if not fav or not fav.enabled:
+            _LOGGER.warning("Tylo Sauna: favorite slot %s not available", slot)
+            return
+
+        # Light
+        if fav.light_on is not None:
+            if fav.light_on:
+                self.light_on()
+            else:
+                self.light_off()
+
+        # Temperature
+        if fav.target_temp_c is not None:
+            await self.async_set_temperature(float(fav.target_temp_c))
+
+        # Stop-after
+        if fav.stop_after_min is not None:
+            await self.async_set_stop_after(int(fav.stop_after_min))
+
+        self.last_selected_favorite_slot = int(slot)
+        self._notify_listeners()
+
+        if start:
+            self.heat_on()
+
+    async def async_ack_last_fault(self) -> None:
+        """Acknowledge the last fault popup (e.g. door cancel) like the official app."""
+        if not self.last_fault:
+            _LOGGER.warning("Tylo Sauna: no last_fault to acknowledge")
+            return
+        payload = encode_fault_ack(self.last_fault)
+        self._send(payload, "ACK_FAULT")

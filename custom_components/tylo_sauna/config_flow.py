@@ -7,23 +7,125 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.core import HomeAssistant
-
-from . import DOMAIN
+from homeassistant.core import HomeAssistant, callback
 
 _LOGGER = logging.getLogger(__name__)
 
+DOMAIN = "tylo_sauna"
+
 UDP_DISCOVERY_PORTS = (54377, 54378)
 UDP_DISCOVERY_TIMEOUT = 10.0  # seconds to listen for broadcast
+
 UUID_RE = re.compile(
     rb"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
+
+DEFAULT_PORT = 42156
+
+# UI field name (user-friendly) -> stored key in entry (backward compatible)
+UI_RELAXED_KEY = "allow_telemetry_from_other_ips"
+STORED_RELAXED_KEY = "relaxed_telemetry"
+
+
+def _decode_varint(buf: bytes, idx: int) -> tuple[int | None, int]:
+    """Return (value, new_idx)."""
+    result = 0
+    shift = 0
+    i = idx
+    while i < len(buf):
+        b = buf[i]
+        result |= (b & 0x7F) << shift
+        i += 1
+        if not (b & 0x80):
+            return result, i
+        shift += 7
+        if shift > 63:
+            return None, idx
+    return None, idx
+
+
+def _iter_fields(buf: bytes):
+    """Yield (field_no, wire_type, value). Value is int for varint, bytes for len-delimited."""
+    i = 0
+    while i < len(buf):
+        key, i = _decode_varint(buf, i)
+        if key is None:
+            return
+        field_no = int(key) >> 3
+        wt = int(key) & 7
+
+        if wt == 0:  # varint
+            v, i = _decode_varint(buf, i)
+            if v is None:
+                return
+            yield field_no, wt, int(v)
+        elif wt == 2:  # length-delimited
+            ln, i = _decode_varint(buf, i)
+            if ln is None:
+                return
+            ln = int(ln)
+            raw = buf[i : i + ln]
+            i += ln
+            yield field_no, wt, raw
+        elif wt == 5:  # 32-bit
+            i += 4
+        elif wt == 1:  # 64-bit
+            i += 8
+        else:
+            return
+
+
+def _parse_announce(data: bytes, src_port: int) -> tuple[str | None, int | None, str | None]:
+    """
+    Parse Tylo announce payload:
+    - GUID via regex
+    - port: protobuf field 2 (varint), fallback to src_port
+    - name: protobuf field 5 as repeated varint bytes OR len-delimited string (best-effort)
+    """
+    m = UUID_RE.search(data)
+    guid = m.group(0).decode("ascii") if m else None
+    if not guid:
+        return None, None, None
+
+    port: int | None = None
+    name_bytes_varint: list[int] = []
+    name_bytes_raw: bytes | None = None
+
+    for field_no, wt, value in _iter_fields(data):
+        if field_no == 2 and wt == 0:
+            port = int(value)
+        elif field_no == 5:
+            if wt == 0:
+                b = int(value)
+                if 0 <= b <= 255:
+                    name_bytes_varint.append(b)
+            elif wt == 2:
+                name_bytes_raw = value
+
+    name: str | None = None
+    if name_bytes_raw:
+        try:
+            name = name_bytes_raw.decode("utf-8", errors="replace").strip()
+        except Exception:  # noqa: BLE001
+            name = None
+    elif name_bytes_varint:
+        try:
+            name = bytes(name_bytes_varint).decode("utf-8", errors="replace").strip()
+        except Exception:  # noqa: BLE001
+            name = None
+
+    if port is None:
+        port = int(src_port)
+
+    return guid, port, name
 
 
 @dataclass
 class DiscoveredSauna:
     host: str
     guid: str
+    port: int
+    name: str | None = None
 
 
 class _DiscoveryProtocol(asyncio.DatagramProtocol):
@@ -33,14 +135,13 @@ class _DiscoveryProtocol(asyncio.DatagramProtocol):
         self.found = found
 
     def datagram_received(self, data: bytes, addr):
-        host, _port = addr
-        match = UUID_RE.search(data)
-        if not match:
+        host, src_port = addr
+        guid, port, name = _parse_announce(data, src_port)
+        if not guid or not port:
             return
-        guid = match.group(0).decode("ascii")
         if guid not in self.found:
-            _LOGGER.debug("Tylo Sauna discovery: found %s at %s", guid, host)
-            self.found[guid] = DiscoveredSauna(host=host, guid=guid)
+            _LOGGER.debug("Tylo Sauna discovery: found %s at %s:%s (%s)", guid, host, port, name or "no-name")
+            self.found[guid] = DiscoveredSauna(host=host, guid=guid, port=int(port), name=name)
 
 
 class TyloSaunaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -50,12 +151,11 @@ class TyloSaunaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         self._discovered: dict[str, DiscoveredSauna] = {}
+        self._selected_guid: str | None = None
+        self._manual: bool = False
 
     async def _async_discover(self, hass: HomeAssistant) -> list[DiscoveredSauna]:
-        """
-        Listen for Tylo broadcasts on the local network for a short period.
-        This is only used when the user opens the Add Integration wizard.
-        """
+        """Listen for Tylo broadcasts for a short period."""
         found: dict[str, DiscoveredSauna] = {}
         loop = hass.loop
         transports: list[asyncio.DatagramTransport] = []
@@ -69,9 +169,7 @@ class TyloSaunaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 transports.append(transport)
                 _LOGGER.debug("Tylo Sauna discovery(user): listening on UDP %s", port)
             except OSError as exc:
-                _LOGGER.debug(
-                    "Tylo Sauna discovery(user): cannot bind %s: %s", port, exc
-                )
+                _LOGGER.debug("Tylo Sauna discovery(user): cannot bind %s: %s", port, exc)
 
         if not transports:
             _LOGGER.debug("Tylo Sauna discovery(user): no UDP sockets opened")
@@ -85,111 +183,184 @@ class TyloSaunaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         devices = list(found.values())
 
-        # Filter out saunas that already have a config entry
+        # Filter only by GUID (allow multiple devices on same IP: sauna + steam)
         existing_entries = hass.config_entries.async_entries(DOMAIN)
         known_guids = {e.data.get("guid") for e in existing_entries if e.data.get("guid")}
-        known_hosts = {e.data.get("host") for e in existing_entries if e.data.get("host")}
-
-        filtered = [
-            s for s in devices
-            if s.guid not in known_guids and s.host not in known_hosts
-        ]
+        filtered = [s for s in devices if s.guid not in known_guids]
 
         _LOGGER.debug(
             "Tylo Sauna discovery(user): found %d new, %d total, %d filtered out",
             len(filtered), len(devices), len(devices) - len(filtered),
         )
-
         return filtered
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None):
         """
-        First step:
-        - Try discovery.
-        - If something is found, show a list + manual IP option.
-        - Otherwise show manual host/port/name form.
+        Step 1: Choose a discovered device or choose manual mode.
         """
         errors: dict[str, str] = {}
 
+        # If no discoveries yet, run discovery once when the wizard opens
+        if not self._discovered:
+            self._discovered = {s.guid: s for s in await self._async_discover(self.hass)}
+
+        options: dict[str, str] = {}
+        for guid, sauna in self._discovered.items():
+            label = f"{(sauna.name or 'Tylo') } @ {sauna.host}:{sauna.port} ({guid})"
+            options[guid] = label
+        options["__manual__"] = "Enter IP manually"
+
         if user_input is not None:
-            relaxed = user_input.get("relaxed_telemetry", True)
+            device = user_input.get("device")
+            if device == "__manual__":
+                self._manual = True
+                self._selected_guid = None
+                return await self.async_step_confirm()
 
-            # Device selected from discovery list
-            if "device" in user_input and user_input["device"] != "__manual__":
-                guid = user_input["device"]
-                sauna = self._discovered.get(guid)
-                if not sauna:
-                    errors["base"] = "device_not_found"
-                else:
-                    host = sauna.host
-                    name = user_input.get("name") or f"Tylo Sauna {host}"
+            if device in self._discovered:
+                self._manual = False
+                self._selected_guid = device
+                return await self.async_step_confirm()
 
-                    await self.async_set_unique_id(sauna.guid)
-                    self._abort_if_unique_id_configured()
+            errors["base"] = "device_not_found"
 
-                    data = {
-                        "host": host,
-                        "port": 42156,
-                        "name": name,
-                        "guid": sauna.guid,
-                        "relaxed_telemetry": relaxed,
-                    }
-                    return self.async_create_entry(title=name, data=data)
+        # Show selection form (Step 1)
+        if options:
+            schema = vol.Schema(
+                {
+                    vol.Required("device", default=list(options.keys())[0]): vol.In(options),
+                }
+            )
+            return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
 
-            # Manual host entry
-            if "host" in user_input and user_input["host"]:
-                host = user_input["host"]
-                port = user_input.get("port", 42156)
-                name = user_input.get("name") or f"Tylo Sauna {host}"
+        # If nothing discovered at all, go straight to confirm (manual)
+        self._manual = True
+        return await self.async_step_confirm()
 
-                await self.async_set_unique_id(host)
+    async def async_step_confirm(self, user_input: dict[str, Any] | None = None):
+        """
+        Step 2:
+        - For discovered: confirm name + option.
+        - For manual: host/port/name + option.
+        """
+        errors: dict[str, str] = {}
+
+        # Defaults
+        relaxed_default = True
+        # existing (if re-run flow) can be pulled from previous entry options, but not necessary here
+
+        if not self._manual:
+            sauna = self._discovered.get(self._selected_guid or "")
+            if not sauna:
+                return await self.async_step_user()
+
+            default_name = sauna.name or f"Tylo Sauna {sauna.host}"
+            if user_input is not None:
+                name = (user_input.get("name") or "").strip() or default_name
+                relaxed = bool(user_input.get(UI_RELAXED_KEY, relaxed_default))
+
+                await self.async_set_unique_id(sauna.guid)
+                self._abort_if_unique_id_configured()
+
+                data = {
+                    "host": sauna.host,
+                    "port": int(sauna.port),               # IMPORTANT
+                    "name": name,
+                    "guid": sauna.guid,
+                    STORED_RELAXED_KEY: relaxed,
+                }
+                return self.async_create_entry(title=name, data=data)
+
+            schema = vol.Schema(
+                {
+                    vol.Optional("name", default=default_name): str,
+                    vol.Optional(UI_RELAXED_KEY, default=True): bool,
+                }
+            )
+
+            return self.async_show_form(
+                step_id="confirm",
+                data_schema=schema,
+                errors=errors,
+                description_placeholders={
+                    "host": sauna.host,
+                    "port": str(sauna.port),
+                    "guid": sauna.guid,
+                    "name": sauna.name or "",
+                },
+            )
+
+        # Manual mode
+        if user_input is not None:
+            host = (user_input.get("host") or "").strip()
+            if not host:
+                errors["base"] = "invalid_host"
+            else:
+                port = int(user_input.get("port", DEFAULT_PORT))
+                name = (user_input.get("name") or f"Tylo Sauna {host}").strip() or f"Tylo Sauna {host}"
+                relaxed = bool(user_input.get(UI_RELAXED_KEY, relaxed_default))
+
+                await self.async_set_unique_id(f"{host}:{port}")
                 self._abort_if_unique_id_configured()
 
                 data = {
                     "host": host,
                     "port": port,
                     "name": name,
-                    "relaxed_telemetry": relaxed,
+                    STORED_RELAXED_KEY: relaxed,
                 }
                 return self.async_create_entry(title=name, data=data)
 
-        # No user input yet – run discovery
-        if not self._discovered:
-            self._discovered = {
-                s.guid: s
-                for s in await self._async_discover(self.hass)
-            }
-
-        # If discovery found something – show the list
-        if self._discovered:
-            options = {
-                guid: f"{sauna.host} ({guid})"
-                for guid, sauna in self._discovered.items()
-            }
-            options["__manual__"] = "Enter IP manually"
-
-            schema = vol.Schema(
-                {
-                    vol.Required("device", default=list(options.keys())[0]): vol.In(options),
-                    vol.Optional("host"): str,
-                    vol.Optional("port", default=42156): int,
-                    vol.Optional("name", default="Tylo Sauna"): str,
-                    vol.Optional("relaxed_telemetry", default=True): bool,
-                }
-            )
-            return self.async_show_form(
-                step_id="user",
-                data_schema=schema,
-                errors=errors,
-            )
-
-        # Nothing discovered – fall back to manual configuration
         schema = vol.Schema(
             {
                 vol.Required("host"): str,
-                vol.Optional("port", default=42156): int,
+                vol.Optional("port", default=DEFAULT_PORT): int,
                 vol.Optional("name", default="Tylo Sauna"): str,
-                vol.Optional("relaxed_telemetry", default=True): bool,
+                vol.Optional(UI_RELAXED_KEY, default=True): bool,
             }
         )
-        return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+        return self.async_show_form(step_id="confirm", data_schema=schema, errors=errors)
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry):
+        return TyloSaunaOptionsFlowHandler(config_entry)
+
+
+class TyloSaunaOptionsFlowHandler(config_entries.OptionsFlow):
+    """Options flow: edit host/port/name/option without removing integration."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        self._entry = config_entry
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None):
+        if user_input is not None:
+            host = str(user_input["host"]).strip()
+            port = int(user_input.get("port", DEFAULT_PORT))
+            name = str(user_input.get("name", "Tylo Sauna")).strip() or "Tylo Sauna"
+            relaxed = bool(user_input.get(UI_RELAXED_KEY, True))
+
+            # store in entry.options
+            return self.async_create_entry(
+                title="",
+                data={
+                    "host": host,
+                    "port": port,
+                    "name": name,
+                    STORED_RELAXED_KEY: relaxed,
+                },
+            )
+
+        current = {**self._entry.data, **self._entry.options}
+        schema = vol.Schema(
+            {
+                vol.Required("host", default=current.get("host", "")): str,
+                vol.Optional("port", default=int(current.get("port", DEFAULT_PORT))): int,
+                vol.Optional("name", default=current.get("name", "Tylo Sauna")): str,
+                vol.Optional(
+                    UI_RELAXED_KEY,
+                    default=bool(current.get(STORED_RELAXED_KEY, True)),
+                ): bool,
+            }
+        )
+        return self.async_show_form(step_id="init", data_schema=schema)
