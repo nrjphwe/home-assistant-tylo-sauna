@@ -1,0 +1,43 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Tylo Sauna",
+        "description": "Select your Tylo Elite controller discovered on the network, or add it manually (recommended for Docker bridge mode).",
+        "data": {
+          "device": "Device"
+        }
+      },
+      "confirm": {
+        "title": "Configure Tylo Sauna",
+        "description": "If you enable “Allow telemetry from other IPs”, Home Assistant will accept telemetry even if it comes from a different IP than the one you configured. This is useful for multi-node setups (sauna + steam) and firmwares that send telemetry from another address.",
+        "data": {
+          "host": "Host / IP address",
+          "port": "UDP port",
+          "name": "Name",
+          "allow_telemetry_from_other_ips": "Allow telemetry from other IPs (recommended)"
+        }
+      }
+    },
+    "error": {
+      "device_not_found": "Selected device is no longer available. Please try again.",
+      "invalid_host": "Please enter a valid IP address or hostname."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Tylo Sauna options",
+        "description": "Change connection settings. Use “Allow telemetry from other IPs” if telemetry is sent from another node/IP (common for sauna + steam systems).",
+        "data": {
+          "host": "Host / IP address",
+          "port": "UDP port",
+          "name": "Name",
+          "allow_telemetry_from_other_ips": "Allow telemetry from other IPs (recommended)"
+        }
+      }
+    }
+  }
+}
+
+

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2] - 2025-12-29
+
+### Fixed
+
+* Restored runtime UI translations for the config flow/options flow by shipping `custom_components/tylo_sauna/translations/en.json`.
+  Without `translations/*.json`, Home Assistant may display raw field keys (e.g. `allow_telemetry_from_other_ips`) instead of labels.
+
 ## [0.2.1] - 2025-12-29
 
 ### Added
