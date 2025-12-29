@@ -174,6 +174,8 @@ When saving preset changes, the app sends an update message containing favorites
 ## Capture methodology (recommended)
 To reverse new fields:
 1) Start capture on the machine that receives traffic (HA host is best).
+   If capturing on a desktop client (Mac/PC), make sure it is an **endpoint** of the UDP session:
+   open the official Tylo app on that machine and confirm it discovers the controller (otherwise you may not see unicast traffic without port mirroring / monitor mode).
 2) Perform one isolated UI action in the app.
 3) Compare payloads before/after.
 4) Repeat in both directions (toggle on/off) to validate mapping.

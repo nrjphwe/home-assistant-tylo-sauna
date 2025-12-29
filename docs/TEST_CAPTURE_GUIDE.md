@@ -15,6 +15,12 @@ Then open the `.pcapng` in Wireshark.
 
 ### OK: capture on a client (Mac) while using the app
 Works as long as the client is one endpoint of the UDP session (it is receiving unicast traffic).
+Practical rule:
+- install/open the **official Tylo Elite app** on that Mac/PC,
+- confirm the app **discovers the controller and shows live data**,
+- then capture on the same machine.
+
+If the desktop is not an endpoint (and you don’t have port mirroring / monitor mode), the sauna’s unicast UDP traffic may not be visible from that machine even though the system is working.
 
 ## Useful Wireshark filters
 - Limit to device + UDP:

@@ -3,6 +3,19 @@
 If the integration is discovered but shows **N/A / no values**, a short packet capture usually pinpoints the issue
 (network isolation, different firmware/protocol variant, or telemetry coming from a different node/IP).
 
+### Where to capture (important)
+
+You must capture on a machine that can actually **see** the relevant UDP traffic:
+
+- **Best**: capture on the **Home Assistant host** (the machine where the integration runs). This is the most reliable option.
+- **Alternative**: capture on a **desktop client (Mac/PC)**, but only if that client is an **endpoint** of the UDP session.
+  The easiest way to ensure this is:
+  - install/open the **official Tylo Elite app** on that desktop,
+  - confirm the app **discovers the sauna and shows live data**,
+  - then start the Wireshark capture on the same machine.
+
+If the desktop is *not* an endpoint (and you don’t have port mirroring / monitor mode), you may see little or no unicast traffic even though the sauna is working.
+
 ### What we want to capture
 
 Please capture UDP traffic related to Tylo:

@@ -309,7 +309,13 @@ class TyloSaunaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 name = (user_input.get("name") or f"Tylo Sauna {host}").strip() or f"Tylo Sauna {host}"
                 relaxed = bool(user_input.get(UI_RELAXED_KEY, relaxed_default))
 
-                await self.async_set_unique_id(f"{host}:{port}")
+                discovered_matches = [
+                    s for s in (self._discovered.values() if self._discovered else [])
+                    if s.host == host
+                ]
+                matched_guid = discovered_matches[0].guid if len(discovered_matches) == 1 else None
+
+                await self.async_set_unique_id(matched_guid or f"{host}:{port}")
                 self._abort_if_unique_id_configured()
 
                 data = {
@@ -318,6 +324,8 @@ class TyloSaunaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "name": name,
                     STORED_RELAXED_KEY: relaxed,
                 }
+                if matched_guid:
+                    data["guid"] = matched_guid
                 return self.async_create_entry(title=name, data=data)
 
         schema = vol.Schema(
@@ -361,10 +369,18 @@ class TyloSaunaOptionsFlowHandler(config_entries.OptionsFlow):
             )
 
         current = {**self._entry.data, **self._entry.options}
+        port_default = int(current.get("port", DEFAULT_PORT))
+        try:
+            domain_data = self.hass.data.get(DOMAIN, {})
+            ctrl = domain_data.get(self._entry.entry_id, {}).get("controller")
+            if ctrl and getattr(ctrl, "control_port", None):
+                port_default = int(ctrl.control_port)
+        except Exception:  # noqa: BLE001
+            pass
         schema = vol.Schema(
             {
                 vol.Required("host", default=current.get("host", "")): str,
-                vol.Optional("port", default=int(current.get("port", DEFAULT_PORT))): int,
+                vol.Optional("port", default=port_default): int,
                 vol.Optional("name", default=current.get("name", "Tylo Sauna")): str,
                 vol.Optional(
                     UI_RELAXED_KEY,

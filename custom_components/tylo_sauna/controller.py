@@ -362,6 +362,7 @@ class SaunaController:
 
         self.guid = guid
         self.relaxed_telemetry = relaxed_telemetry
+        self.endpoint_source: str = "config"
 
         self._transport: asyncio.DatagramTransport | None = None
         self._protocol: SaunaProtocol | None = None
@@ -393,6 +394,47 @@ class SaunaController:
         # Callbacks to notify entities
         self._callbacks: list[callable] = []
 
+    def maybe_update_host(self, host: str, source: str = "unknown", guid: str | None = None) -> None:
+        """Update effective host when we learn a better value (announce/cache)."""
+        new_host = str(host).strip()
+        if not new_host:
+            return
+
+        # Never switch the effective endpoint to loopback/unspecified addresses.
+        # In some Docker/macOS setups the sauna announce may appear to come from 127.0.0.1,
+        # but that is not a routable endpoint for UDP control.
+        try:
+            import ipaddress
+
+            ip = ipaddress.ip_address(new_host)
+            if ip.is_loopback or ip.is_unspecified:
+                return
+        except Exception:  # noqa: BLE001
+            # If parsing fails, be conservative: only reject obvious loopback literals.
+            if new_host in {"127.0.0.1", "0.0.0.0", "::1", "::"}:
+                return
+
+        if str(getattr(self, "host", "")).strip() == new_host:
+            return
+
+        old = str(getattr(self, "host", "")).strip()
+        self.host = new_host
+        self.endpoint_source = str(source)
+
+        # Reset pinned telemetry host so we can accept packets from the new endpoint.
+        self.telemetry_host = None
+        self.last_rx_ip = None
+        self.last_rx_port = None
+        self.last_rx_monotonic = None
+
+        _LOGGER.info(
+            "Tylo Sauna: updated host=%s (was %s) via %s (guid=%s)",
+            self.host,
+            old,
+            source,
+            guid or getattr(self, "guid", None) or "n/a",
+        )
+
     def maybe_update_control_port(self, port: int, source: str = "unknown", src_ip: str | None = None, guid: str | None = None) -> None:
         """Update effective control_port when we learn a better value (announce/telemetry)."""
         try:
@@ -409,6 +451,7 @@ class SaunaController:
         old = int(getattr(self, "control_port", 0))
         self.control_port = new_port
         self._probe_ports = {self.control_port}
+        self.endpoint_source = str(source)
         _LOGGER.info(
             "Tylo Sauna: updated control_port=%s (was %s) via %s from %s (guid=%s)",
             self.control_port,
@@ -418,13 +461,34 @@ class SaunaController:
             guid or getattr(self, "guid", None) or "n/a",
         )
 
-        # Fast recovery: if transport is up, immediately send INIT to the new port.
-        # This helps when the controller changes its port after reboot and broadcasts are not visible.
+        # Fast recovery: after port change some firmwares require a fresh HELLO/INIT handshake
+        # before accepting commands on the new port (telemetry may still arrive).
+        if self._transport:
+            try:
+                self._hass.async_create_task(self._async_port_switch_handshake(int(self.control_port)))
+            except Exception:  # noqa: BLE001
+                # fallback: at least send INIT once
+                try:
+                    self._send(INIT_SHORT, desc="PORT_SWITCH_INIT", port=int(self.control_port))
+                except Exception:  # noqa: BLE001
+                    pass
+
+    async def _async_port_switch_handshake(self, port: int) -> None:
+        """Send a short HELLO/INIT sequence to the specified port to re-establish control."""
         try:
-            if self._transport:
-                self._send(INIT_SHORT, desc="PORT_SWITCH_INIT", port=int(self.control_port))
+            p = int(port)
         except Exception:  # noqa: BLE001
-            pass
+            return
+        if not (0 < p <= 65535):
+            return
+        # Reuse the same pattern as the initial sequence (small delays are intentional).
+        self._send(HELLO_PAYLOAD, "PORT_SWITCH_HELLO 1", port=p)
+        await asyncio.sleep(0.1)
+        self._send(HELLO_PAYLOAD, "PORT_SWITCH_HELLO 2", port=p)
+        await asyncio.sleep(0.1)
+        self._send(HELLO_PAYLOAD, "PORT_SWITCH_HELLO 3", port=p)
+        await asyncio.sleep(0.1)
+        self._send(INIT_SHORT, "PORT_SWITCH_INIT", port=p)
 
     async def async_start(self) -> None:
         """Create UDP socket and send initial HELLO/INIT sequence."""
@@ -491,7 +555,11 @@ class SaunaController:
         )
 
     def _send_offline_probe(self) -> None:
-        """Send a lightweight INIT probe to a set of likely ports when offline."""
+        """Send a lightweight handshake probe to a set of likely ports when offline.
+
+        Important: some controllers appear to require a HELLO before INIT/telemetry starts,
+        so we probe with HELLO + INIT_SHORT (very low frequency) to recover after reboot.
+        """
         # Prefer the currently known ports first.
         ports = [
             int(getattr(self, "control_port", 0) or 0),
@@ -515,7 +583,9 @@ class SaunaController:
             return
 
         for p in uniq:
-            self._send(INIT_SHORT, desc=f"OFFLINE_PROBE (port {p})", port=p)
+            # Probe like the official app: HELLO then INIT.
+            self._send(HELLO_PAYLOAD, desc=f"OFFLINE_PROBE_HELLO (port {p})", port=p)
+            self._send(INIT_SHORT, desc=f"OFFLINE_PROBE_INIT (port {p})", port=p)
 
     def start_keepalive(self) -> None:
         if self._unsub_keepalive is not None:
@@ -577,6 +647,42 @@ class SaunaController:
 
     def datagram_received(self, data: bytes, addr) -> None:
         src_ip, src_port = addr
+
+        # If GUID is not known (manual setup), try to learn it from incoming Tylo packets.
+        # Not all firmwares include it in unicast telemetry, but when present it helps discovery-first caching.
+        if getattr(self, "guid", None) is None:
+            pkt_guid = _extract_guid_from_payload(data)
+            if pkt_guid:
+                try:
+                    self.guid = pkt_guid
+                    # Persist GUID into the config entry if available (migration without re-add).
+                    entry_id = getattr(self, "entry_id", None)
+                    domain_data = getattr(self._hass, "data", {}).get(DOMAIN, {})
+                    entry = None
+                    if entry_id and isinstance(domain_data, dict):
+                        entry = domain_data.get(str(entry_id), {}).get("entry")
+                    if entry and not entry.data.get("guid"):
+                        new_data = {**entry.data, "guid": str(pkt_guid)}
+                        self._hass.config_entries.async_update_entry(entry, data=new_data)
+                    # Persist endpoint cache if store exists.
+                    store = domain_data.get("_endpoint_store") if isinstance(domain_data, dict) else None
+                    if store:
+                        try:
+                            self._hass.async_create_task(
+                                store.set(
+                                    guid=str(pkt_guid),
+                                    # Кэшируем endpoint из фактического источника пакета, а не из текущего self.host
+                                    # (на Docker/macOS self.host может быть неверно переписан в 127.0.0.1).
+                                    host=str(src_ip),
+                                    port=int(src_port),
+                                    source="telemetry",
+                                )
+                            )
+                        except Exception:  # noqa: BLE001
+                            pass
+                    _LOGGER.info("Tylo Sauna: learned guid=%s from telemetry", pkt_guid)
+                except Exception:  # noqa: BLE001
+                    pass
 
 
         if not self.relaxed_telemetry:

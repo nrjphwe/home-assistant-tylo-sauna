@@ -4,6 +4,7 @@ import re
 from typing import Any
 
 from .const import UDP_DISCOVERY_PORTS
+from .storage import EndpointStore
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -78,18 +79,21 @@ def parse_announce(data: bytes, src_port: int) -> tuple[str | None, int | None]:
 
 
 class _RuntimeDiscoveryProtocol(asyncio.DatagramProtocol):
-    def __init__(self, on_packet):
+    def __init__(self, hass, on_packet):
+        self._hass = hass
         self._on_packet = on_packet
 
     def datagram_received(self, data: bytes, addr) -> None:
-        self._on_packet(data, addr)
+        # Run async handler in HA loop without blocking the UDP protocol callback.
+        self._hass.async_create_task(self._on_packet(data, addr))
 
 
 class RuntimeDiscovery:
     """Listen for Tylo announces during runtime to adapt to changing control ports."""
 
-    def __init__(self, hass) -> None:
+    def __init__(self, hass, store: EndpointStore) -> None:
         self._hass = hass
+        self._store = store
         self._controllers: set[Any] = set()
         self._transports: list[asyncio.DatagramTransport] = []
 
@@ -112,7 +116,7 @@ class RuntimeDiscovery:
         async def _bind(port: int) -> None:
             try:
                 transport, _proto = await loop.create_datagram_endpoint(
-                    lambda: _RuntimeDiscoveryProtocol(self._on_packet),
+                    lambda: _RuntimeDiscoveryProtocol(self._hass, self._on_packet),
                     local_addr=("0.0.0.0", int(port)),
                 )
                 self._transports.append(transport)
@@ -133,26 +137,71 @@ class RuntimeDiscovery:
                 pass
         self._transports.clear()
 
-    def _on_packet(self, data: bytes, addr) -> None:
+    async def _on_packet(self, data: bytes, addr) -> None:
         src_ip, src_port = addr
         guid, advertised_port = parse_announce(data, int(src_port))
         if not guid or advertised_port is None:
             return
 
-        # Only act on meaningful changes; log is emitted by controller update method.
+        # Persist last known endpoint for discovery-first behavior.
+        try:
+            await self._store.set(
+                guid=str(guid),
+                host=str(src_ip),
+                port=int(advertised_port),
+                source="announce",
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+        domain_data = self._hass.data.get("tylo_sauna", {})
+
+        # Only act on meaningful changes; controller logs port changes itself.
         for c in list(self._controllers):
             try:
                 if getattr(c, "guid", None):
                     if str(getattr(c, "guid")) != str(guid):
                         continue
                 else:
-                    # If we don't have a GUID, fall back to host match.
-                    if str(getattr(c, "host", "")) != str(src_ip):
+                    # If we don't have a GUID, fall back to configured host match (safer than effective host).
+                    configured_host = str(getattr(c, "configured_host", getattr(c, "host", "")))
+                    if configured_host != str(src_ip):
                         continue
-                    # Adopt GUID for better matching later (runtime only).
-                    setattr(c, "guid", guid)
+                    # Adopt GUID for better matching later.
+                    setattr(c, "guid", str(guid))
 
-                c.maybe_update_control_port(int(advertised_port), source="announce", src_ip=str(src_ip), guid=str(guid))
+                    # Migrate config entry: persist GUID so future matching is stable.
+                    entry_id = getattr(c, "entry_id", None)
+                    if entry_id and isinstance(domain_data, dict):
+                        entry = domain_data.get(str(entry_id), {}).get("entry")
+                        try:
+                            if entry and not entry.data.get("guid"):
+                                new_data = {**entry.data, "guid": str(guid)}
+                                self._hass.config_entries.async_update_entry(entry, data=new_data)
+                                _LOGGER.info("Tylo Sauna: persisted guid=%s for entry_id=%s", guid, entry_id)
+                        except Exception:  # noqa: BLE001
+                            pass
+
+                # Update effective host if it changed (e.g., DHCP after reboot).
+                try:
+                    try:
+                        import ipaddress
+
+                        ip = ipaddress.ip_address(str(src_ip))
+                        if not ip.is_loopback and not ip.is_unspecified:
+                            c.maybe_update_host(str(src_ip), source="announce", guid=str(guid))
+                    except Exception:  # noqa: BLE001
+                        # If parsing fails, do not update host (be conservative).
+                        pass
+                except Exception:  # noqa: BLE001
+                    pass
+
+                c.maybe_update_control_port(
+                    int(advertised_port),
+                    source="announce",
+                    src_ip=str(src_ip),
+                    guid=str(guid),
+                )
             except Exception:  # noqa: BLE001
                 continue
 

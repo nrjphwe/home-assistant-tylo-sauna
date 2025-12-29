@@ -63,9 +63,9 @@ For each configured controller the integration creates one device with:
   * Includes diagnostic attributes:
 
     * `last_seen` / `seconds_ago` (as attributes, not a separate sensor)
-    * configured host/port
+    * configured host (user preference)
     * effective telemetry source (useful in multi-node setups)
-    * learned control port
+    * effective control port (`control_port`)
     * rx/tx counters
 
 ---
@@ -120,6 +120,7 @@ The integration uses a **two-step** setup:
 If you run HA in Docker with bridge networking, UDP broadcast discovery may not work.
 Manual setup still works; the integration can learn the effective control port from incoming packets.
 Newer versions also keep a runtime discovery listener and perform lightweight offline probes to recover if the controller changes its port after reboot.
+The integration also caches the last-known endpoint per controller GUID to improve recovery across restarts.
 
 ---
 
@@ -163,7 +164,7 @@ Check `binary_sensor.tylo_sauna_online`:
 
 * If `off`, inspect its attributes:
 
-  * `configured_host/port`
+  * `configured_host`
   * `effective_telemetry_host`
   * `control_port`
   * `seconds_ago`
@@ -193,6 +194,7 @@ sudo tcpdump -i any -nn -s0 -w tylo_capture.pcapng 'udp and host <SAUNA_IP>'
 
 Note: do **not** rely on UDP port **42156** being fixed. Some setups use a different control/telemetry port.
 If you capture in Wireshark, filtering by IP is the safest starting point (e.g. `ip.addr == <SAUNA_IP> && udp`).
+If you capture on a desktop (Mac/PC), make sure that machine is an endpoint of the UDP session — the easiest way is to open the official Tylo app there and confirm it discovers the controller before starting the capture.
 
 Attach the `.pcapng` to the GitHub issue.
 

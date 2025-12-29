@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.3.0] - 2025-12-29
+
+### Changed
+
+* **Discovery-first identity (GUID-first)**: the integration now treats the controller GUID as the primary identity and tracks the runtime endpoint (`host:port`) similarly to the official app.
+  This makes it significantly more resilient to sauna reboots, DHCP IP changes, and firmware variants where the effective control port changes between sessions.
+* **Runtime endpoint tracking**:
+  * Control port changes detected via announce now trigger a fresh HELLO/INIT handshake on the new port (some firmwares ignore commands until re-initialized).
+  * Options flow now defaults the “port” field to the **current effective `control_port`** when available (less confusing in dynamic-port setups).
+* **Docker/macOS robustness**: never switches the effective control host to loopback/unspecified addresses (prevents `effective_host=127.0.0.1` breaking connectivity in some Docker/network setups).
+
+### Fixed
+
+* Cases where the integration stayed “offline” after Home Assistant restart until the user manually corrected the port.
+
+### Notes (migration)
+
+* This release is designed to be **backwards compatible** for existing entries (no remove/re-add required).
+* If you upgrade from older versions and see duplicated entities (for example `*_2`) or stale `restored/unavailable` entities, the cleanest path is still to remove and re-add the integration
+  (see the migration note in `0.2.1`).
+
 ## [0.2.3] - 2025-12-29
 
 ### Added
