@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.3] - 2025-12-29
+
+### Added
+
+* Runtime discovery listener on UDP **54377/54378** (shared across entries) to adapt to controllers that change their effective control port after reboot.
+* Offline recovery probe: when offline, Home Assistant periodically sends a lightweight INIT probe to a small set of likely ports to re-establish telemetry even when broadcasts are not visible.
+
+### Changed
+
+* Config flow UX: if discovery found devices but the user selects **Manual**, the manual form is pre-filled with the discovered host/port (instead of defaulting to 42156).
+
 ## [0.2.2] - 2025-12-29
 
 ### Fixed

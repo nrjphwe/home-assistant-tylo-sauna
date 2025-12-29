@@ -113,11 +113,13 @@ The integration uses a **two-step** setup:
    * Name (default is the controller’s advertised name if available)
    * “Allow telemetry from other IPs (recommended)”
      Enable this if your system sends telemetry from a different node/IP (common for sauna + steam systems).
+   * If discovery found devices but you chose **Manual**, the host/port fields are pre-filled from discovery to avoid guessing the control port.
 
 ### Docker note
 
 If you run HA in Docker with bridge networking, UDP broadcast discovery may not work.
 Manual setup still works; the integration can learn the effective control port from incoming packets.
+Newer versions also keep a runtime discovery listener and perform lightweight offline probes to recover if the controller changes its port after reboot.
 
 ---
 
@@ -153,7 +155,7 @@ Alternative (advanced): manually clean up old entities in the entity registry in
 
 Most common causes:
 
-* Controller uses a **different control port** than expected (fixed in 0.2.1 via discovery parsing + port learning).
+* Controller uses a **different control port** than expected (fixed via discovery parsing + port learning; some setups change ports after reboot).
 * Home Assistant cannot receive UDP replies (firewall, VLAN isolation, guest Wi-Fi, etc.).
 * Telemetry arrives from a different node/IP → enable “Allow telemetry from other IPs”.
 

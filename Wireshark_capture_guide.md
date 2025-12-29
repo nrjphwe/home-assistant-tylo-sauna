@@ -21,10 +21,15 @@ Please capture UDP traffic related to Tylo:
 4. Apply this **display filter**:
 
    ```
-   udp.port == 54377 || udp.port == 54378 || udp
+   udp
    ```
 
    (Tip: you can also use a capture filter, but the display filter is easier.)
+   If you know the sauna IP, this is even better:
+
+   ```
+   ip.addr == <SAUNA_IP> && udp
+   ```
 
 5. Click **Start capturing**.
 6. Reproduce the issue while capturing:

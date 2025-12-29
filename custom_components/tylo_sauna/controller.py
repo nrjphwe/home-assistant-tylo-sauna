@@ -353,6 +353,7 @@ class SaunaController:
         self._unsub_keepalive = None
         self._online_cached = False
         self._last_publish_monotonic = time.monotonic()
+        self._last_offline_probe_monotonic = 0.0
 
         # If user configured discovery port, probe the known control port too (common on Elite).
         self._probe_ports: set[int] = {self.control_port}
@@ -391,6 +392,39 @@ class SaunaController:
 
         # Callbacks to notify entities
         self._callbacks: list[callable] = []
+
+    def maybe_update_control_port(self, port: int, source: str = "unknown", src_ip: str | None = None, guid: str | None = None) -> None:
+        """Update effective control_port when we learn a better value (announce/telemetry)."""
+        try:
+            new_port = int(port)
+        except Exception:  # noqa: BLE001
+            return
+
+        if new_port <= 0 or new_port > 65535:
+            return
+
+        if new_port == int(getattr(self, "control_port", 0)):
+            return
+
+        old = int(getattr(self, "control_port", 0))
+        self.control_port = new_port
+        self._probe_ports = {self.control_port}
+        _LOGGER.info(
+            "Tylo Sauna: updated control_port=%s (was %s) via %s from %s (guid=%s)",
+            self.control_port,
+            old,
+            source,
+            src_ip or "n/a",
+            guid or getattr(self, "guid", None) or "n/a",
+        )
+
+        # Fast recovery: if transport is up, immediately send INIT to the new port.
+        # This helps when the controller changes its port after reboot and broadcasts are not visible.
+        try:
+            if self._transport:
+                self._send(INIT_SHORT, desc="PORT_SWITCH_INIT", port=int(self.control_port))
+        except Exception:  # noqa: BLE001
+            pass
 
     async def async_start(self) -> None:
         """Create UDP socket and send initial HELLO/INIT sequence."""
@@ -443,9 +477,45 @@ class SaunaController:
                 self._last_publish_monotonic = now_m
                 self._notify_listeners()
 
+            # If we're offline, periodically probe a set of candidate ports.
+            # This helps when the controller changes its effective control port after reboot
+            # and broadcasts are not visible to Home Assistant (common in some Docker setups).
+            if not online:
+                # Probe at most once per 30s to avoid spamming.
+                if (now_m - float(self._last_offline_probe_monotonic)) >= 30:
+                    self._last_offline_probe_monotonic = now_m
+                    self._send_offline_probe()
+
         self._unsub_watchdog = async_track_time_interval(
             self._hass, _tick, timedelta(seconds=10)
         )
+
+    def _send_offline_probe(self) -> None:
+        """Send a lightweight INIT probe to a set of likely ports when offline."""
+        # Prefer the currently known ports first.
+        ports = [
+            int(getattr(self, "control_port", 0) or 0),
+            int(getattr(self, "configured_port", 0) or 0),
+            int(DEFAULT_CONTROL_PORT),
+            *[int(p) for p in UDP_DISCOVERY_PORTS],
+        ]
+        # De-dup and remove invalid values.
+        seen: set[int] = set()
+        uniq: list[int] = []
+        for p in ports:
+            if p <= 0 or p > 65535:
+                continue
+            if p in seen:
+                continue
+            seen.add(p)
+            uniq.append(p)
+
+        # No transport yet -> nothing to do.
+        if not self._transport:
+            return
+
+        for p in uniq:
+            self._send(INIT_SHORT, desc=f"OFFLINE_PROBE (port {p})", port=p)
 
     def start_keepalive(self) -> None:
         if self._unsub_keepalive is not None:
@@ -598,16 +668,13 @@ class SaunaController:
         if not _looks_like_tylo_telemetry(data):
             return
 
+        # If we know the GUID, require it to match before accepting a port update.
+        pkt_guid = _extract_guid_from_payload(data)
+        if self.guid and pkt_guid and pkt_guid != self.guid:
+            return
+
         src_port = int(src_port)
-        if src_port != int(self.control_port):
-            old = int(self.control_port)
-            self.control_port = src_port
-            self._probe_ports = {self.control_port}
-            _LOGGER.warning(
-                "Tylo Sauna: learned control_port=%s from incoming packet (was %s). "
-                "Commands will be sent to %s:%s",
-                self.control_port, old, self.host, self.control_port
-            )
+        self.maybe_update_control_port(src_port, source="telemetry", src_ip=str(getattr(self, "last_rx_ip", None) or self.host), guid=getattr(self, "guid", None))
 
     # === Telemetry parsing ===
 

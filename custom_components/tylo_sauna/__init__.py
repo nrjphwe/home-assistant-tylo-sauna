@@ -33,6 +33,7 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up a Tylo Sauna config entry."""
     from .controller import SaunaController
+    from .runtime_discovery import RuntimeDiscovery
 
     # Options override data (so OptionsFlow changes take effect)
     cfg = {**entry.data, **entry.options}
@@ -58,7 +59,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     controller.configured_host = host
     controller.configured_port = port
 
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {"controller": controller}
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    domain_data[entry.entry_id] = {"controller": controller}
+
+    # Ensure runtime discovery listener exists (shared across entries) to adapt to changing control ports.
+    if "_runtime_discovery" not in domain_data:
+        domain_data["_runtime_discovery"] = RuntimeDiscovery(hass)
+
+    runtime_discovery: RuntimeDiscovery = domain_data["_runtime_discovery"]
+    if not runtime_discovery.is_running:
+        await runtime_discovery.async_start()
+    runtime_discovery.register(controller)
 
     # Start UDP controller (HELLO/INIT) in the background
     hass.async_create_task(controller.async_start())
@@ -102,6 +113,21 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     if unload_ok and DOMAIN in hass.data:
-        hass.data[DOMAIN].pop(entry.entry_id, None)
+        domain_data = hass.data[DOMAIN]
+        domain_data.pop(entry.entry_id, None)
+        runtime_discovery = domain_data.get("_runtime_discovery")
+        if runtime_discovery and controller:
+            try:
+                runtime_discovery.unregister(controller)
+            except Exception:  # noqa: BLE001
+                pass
+
+        # Stop listener when no entries remain (only the shared key left).
+        if runtime_discovery and len([k for k in domain_data.keys() if not str(k).startswith("_")]) == 0:
+            try:
+                await runtime_discovery.async_stop()
+            except Exception:  # noqa: BLE001
+                pass
+            domain_data.pop("_runtime_discovery", None)
 
     return unload_ok

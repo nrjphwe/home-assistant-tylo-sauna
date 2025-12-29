@@ -291,6 +291,15 @@ class TyloSaunaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
 
         # Manual mode
+        hinted = next(iter(self._discovered.values()), None) if self._discovered else None
+        hinted_host = hinted.host if hinted else ""
+        hinted_port = int(hinted.port) if hinted else int(DEFAULT_PORT)
+        hinted_name = (
+            (hinted.name or f"Tylo Sauna {hinted_host}").strip()
+            if hinted and hinted_host
+            else "Tylo Sauna"
+        )
+
         if user_input is not None:
             host = (user_input.get("host") or "").strip()
             if not host:
@@ -313,9 +322,9 @@ class TyloSaunaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         schema = vol.Schema(
             {
-                vol.Required("host"): str,
-                vol.Optional("port", default=DEFAULT_PORT): int,
-                vol.Optional("name", default="Tylo Sauna"): str,
+                vol.Required("host", default=hinted_host): str,
+                vol.Optional("port", default=hinted_port): int,
+                vol.Optional("name", default=hinted_name): str,
                 vol.Optional(UI_RELAXED_KEY, default=True): bool,
             }
         )

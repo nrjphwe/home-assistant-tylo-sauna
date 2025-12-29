@@ -30,6 +30,7 @@ Key user-facing features:
 ### Discovery
 - Config flow tries to listen on discovery ports (54377/54378) for a short period.
 - In Docker bridge mode discovery may not work (broadcast); manual entry must work.
+- For reliability, the integration should keep a shared runtime listener on discovery ports to learn port changes after controller reboot (when possible).
 
 ### “Relaxed telemetry” mode
 - Some setups send telemetry from a different IP than configured “panel IP”.
@@ -115,6 +116,7 @@ Fault sensors can be separate diagnostic sensors:
 ## Reliability improvements for Docker users
 - Auto-learn `control_port` from `src_port` of valid incoming packets.
 - Probe a small set of ports on init when configured port is a discovery port (54377/54378).
+- When offline, periodically probe a small set of likely ports (e.g., learned/control/configured + common defaults) to recover even if broadcasts are not visible.
 - Keepalive must not spam warnings if transport is not ready.
 
 ## Testing plan
