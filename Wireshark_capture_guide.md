@@ -21,7 +21,7 @@ If the desktop is *not* an endpoint (and you don’t have port mirroring / monit
 Please capture UDP traffic related to Tylo:
 
 - Discovery: UDP **54377 / 54378**
-- Control + telemetry: UDP **42156** is common, but **not guaranteed** (some firmwares/setups use a different port).
+- Control + telemetry: uses a **dynamic, session-specific UDP port** (chosen by the controller) and may change after reboot.
   If in doubt, capture all UDP traffic to/from the sauna IP and we can identify the effective port from packet source ports and payload patterns.
 
 ### Wireshark – basic steps (macOS / Windows)

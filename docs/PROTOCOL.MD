@@ -9,7 +9,7 @@ It is not official documentation. Only information confirmed by captures is incl
 - There is a controller/panel (“sauna”) and one or more clients (official apps, Home Assistant).
 - There is:
   - **Discovery/announce** traffic (broadcast / discovery ports).
-  - A **control + telemetry session** using a **separate UDP port** (often **42156**, but not guaranteed).
+  - A **control + telemetry session** using a **separate UDP port** (dynamic / session-specific).
 - Payloads are **protobuf-like**: varints, field numbers, length-delimited submessages.
   - We do not have the `.proto`, so we parse using generic protobuf rules.
 
@@ -20,8 +20,8 @@ It is not official documentation. Only information confirmed by captures is incl
 
 ### Control / Telemetry port
 - In real sessions, the sauna uses a **dedicated UDP port** as source for telemetry and receiver for commands.
-- Observed commonly: sauna → client uses **source port 42156** and clients send commands back to that port.
-- However, captures and field reports show the **effective control/telemetry port is not fixed** and may differ by firmware/setup.
+- Captures and field reports show the **effective control/telemetry port is not fixed** and may differ by firmware/setup,
+  and it may also change after controller reboot.
 - Therefore, for reliability:
   - UI “port” is **not always** the correct control port.
   - The integration should be able to **learn the effective control port** from incoming packets (`src_port`) that look like Tylo telemetry/config/events.

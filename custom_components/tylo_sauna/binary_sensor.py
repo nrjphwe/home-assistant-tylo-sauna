@@ -73,7 +73,6 @@ class TyloSaunaOnlineBinarySensor(BinarySensorEntity):
 
         return {
             # Config / options
-            "configured_host": getattr(self._controller, "configured_host", self._controller.host),
             "relaxed_telemetry": bool(getattr(self._controller, "relaxed_telemetry", False)),
             "guid": getattr(self._controller, "guid", None),
             "endpoint_source": getattr(self._controller, "endpoint_source", None),

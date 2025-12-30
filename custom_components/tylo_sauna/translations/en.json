@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Tylo Sauna",
-        "description": "Select your Tylo Elite controller discovered on the network, or add it manually (recommended for Docker bridge mode).",
+        "description": "Select your Tylo Elite controller discovered on the network, or add it manually.",
         "data": {
           "device": "Device"
         }
@@ -21,7 +21,8 @@
     },
     "error": {
       "device_not_found": "Selected device is no longer available. Please try again.",
-      "invalid_host": "Please enter a valid IP address or hostname."
+      "invalid_host": "Please enter a valid IP address or hostname.",
+      "invalid_port": "Please enter a valid UDP port (1-65535)."
     }
   },
   "options": {

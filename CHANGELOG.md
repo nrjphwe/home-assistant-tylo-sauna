@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.1] - 2025-12-30
+
+### Changed
+
+* **Multi-device setup UX (autodiscovery)**: adding multiple controllers in a row now works more reliably.
+* **Translations**: added UI translations for multiple languages (`da`, `de`, `es`, `fi`, `fr`, `it`, `nb`, `nl`, `pl`, `ru`, `sv`).
+
+### Fixed
+
+* Cases where adding the 2nd/3rd controller required manual setup.
+
 ## [0.3.0] - 2025-12-29
 
 ### Changed
@@ -30,7 +41,7 @@
 
 ### Changed
 
-* Config flow UX: if discovery found devices but the user selects **Manual**, the manual form is pre-filled with the discovered host/port (instead of defaulting to 42156).
+* Config flow UX: if discovery found devices but the user selects **Manual**, the manual form is pre-filled with the discovered host/port (instead of defaulting to a placeholder port).
 
 ## [0.2.2] - 2025-12-29
 
@@ -75,7 +86,7 @@
 ### Changed
 
 * **Discovery now reads the controller’s advertised control port** from broadcast announces
-  (fixes setups where the control port is *not* 42156).
+  (fixes setups where the control port is not a fixed value).
 * **Control port is learned automatically** from incoming Tylo packets (helps Docker and firmware variants).
 * **Multi-device on same host** (sauna + steam) is supported in discovery and manual mode.
 * **Device identity is stable across host changes** (uses config entry id for device identifiers).

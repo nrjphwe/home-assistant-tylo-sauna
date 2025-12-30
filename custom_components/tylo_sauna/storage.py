@@ -57,6 +57,10 @@ class EndpointStore:
     def get(self, guid: str) -> EndpointRecord | None:
         return self._data.get(str(guid))
 
+    def all_records(self) -> dict[str, EndpointRecord]:
+        """Return a snapshot of all cached endpoint records."""
+        return dict(self._data)
+
     def find_guid_for_host(self, host: str) -> str | None:
         """Return GUID if the host matches exactly one cached endpoint."""
         host = str(host).strip()

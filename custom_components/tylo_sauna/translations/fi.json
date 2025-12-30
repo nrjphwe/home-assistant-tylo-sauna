@@ -1,0 +1,43 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Tylo Sauna",
+        "description": "Valitse verkosta löydetty Tylo Elite -ohjain tai lisää se käsin.",
+        "data": {
+          "device": "Laite"
+        }
+      },
+      "confirm": {
+        "title": "Määritä Tylo Sauna",
+        "description": "Jos otat käyttöön ”Salli telemetria muista IP-osoitteista”, Home Assistant hyväksyy telemetrian myös silloin, kun se tulee eri IP-osoitteesta kuin määrittämäsi. Tämä on hyödyllistä monisolmu-ympäristöissä (sauna + höyry) ja laiteohjelmistoissa, jotka lähettävät telemetriaa toisesta osoitteesta.",
+        "data": {
+          "host": "Isäntä / IP-osoite",
+          "port": "UDP-portti",
+          "name": "Nimi",
+          "allow_telemetry_from_other_ips": "Salli telemetria muista IP-osoitteista (suositus)"
+        }
+      }
+    },
+    "error": {
+      "device_not_found": "Valittu laite ei ole enää saatavilla. Yritä uudelleen.",
+      "invalid_host": "Anna kelvollinen IP-osoite tai isäntänimi.",
+      "invalid_port": "Anna kelvollinen UDP-portti (1–65535)."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Tylo Sauna -asetukset",
+        "description": "Muuta yhteysasetuksia. Käytä ”Salli telemetria muista IP-osoitteista”, jos telemetria lähetetään toisesta solmusta/IP-osoitteesta (yleistä sauna + höyry -järjestelmissä).",
+        "data": {
+          "host": "Isäntä / IP-osoite",
+          "port": "UDP-portti",
+          "name": "Nimi",
+          "allow_telemetry_from_other_ips": "Salli telemetria muista IP-osoitteista (suositus)"
+        }
+      }
+    }
+  }
+}
+

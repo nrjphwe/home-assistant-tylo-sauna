@@ -8,15 +8,16 @@ from homeassistant.util import dt as dt_util
 from datetime import timedelta
 from homeassistant.helpers.event import async_track_time_interval
 
-from .const import DEFAULT_CONTROL_PORT, UDP_DISCOVERY_PORTS
+from .const import (
+    DEFAULT_CONTROL_PORT,
+    DOMAIN,
+    KEEPALIVE_INTERVAL,
+    ONLINE_TIMEOUT_S,
+    UDP_DISCOVERY_PORTS,
+)
 
 
 _LOGGER = logging.getLogger(__name__)
-
-KEEPALIVE_INTERVAL = 15  # seconds, matches official app behavior
-ONLINE_TIMEOUT_S = 300         # consider online if a packet was received within the last N seconds
-
-
 
 # HELLO / INIT packets reverse engineered from the official app
 HELLO_PAYLOAD = bytes.fromhex(
@@ -355,7 +356,7 @@ class SaunaController:
         self._last_publish_monotonic = time.monotonic()
         self._last_offline_probe_monotonic = 0.0
 
-        # If user configured discovery port, probe the known control port too (common on Elite).
+        # If user configured a discovery port, also probe the legacy observed control-port candidate.
         self._probe_ports: set[int] = {self.control_port}
         if self.control_port in UDP_DISCOVERY_PORTS:
             self._probe_ports |= {DEFAULT_CONTROL_PORT, *UDP_DISCOVERY_PORTS}

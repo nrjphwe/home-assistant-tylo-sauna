@@ -78,9 +78,8 @@ For each configured controller the integration creates one device with:
 ### Ports (observed)
 
 * Discovery uses UDP **54377 / 54378** (same as the official app)
-* Control/telemetry port is **not always 42156**
-  Some firmwares advertise a different control port via broadcast.
-  **This integration auto-detects the control port from discovery and learns it from incoming telemetry.**
+* Control/telemetry uses a **dynamic, session-specific UDP port** (chosen by the controller) and it may change after reboot.
+  **This integration auto-detects the effective port from discovery/announce and learns it from incoming telemetry.**
 
 ---
 
@@ -164,7 +163,6 @@ Check `binary_sensor.tylo_sauna_online`:
 
 * If `off`, inspect its attributes:
 
-  * `configured_host`
   * `effective_telemetry_host`
   * `control_port`
   * `seconds_ago`
@@ -192,7 +190,7 @@ Short capture helps confirm whether the controller replies and which port it use
 sudo tcpdump -i any -nn -s0 -w tylo_capture.pcapng 'udp and host <SAUNA_IP>'
 ```
 
-Note: do **not** rely on UDP port **42156** being fixed. Some setups use a different control/telemetry port.
+Note: do **not** rely on any fixed UDP port for control/telemetry. The effective port can change between sessions.
 If you capture in Wireshark, filtering by IP is the safest starting point (e.g. `ip.addr == <SAUNA_IP> && udp`).
 If you capture on a desktop (Mac/PC), make sure that machine is an endpoint of the UDP session — the easiest way is to open the official Tylo app there and confirm it discovers the controller before starting the capture.
 

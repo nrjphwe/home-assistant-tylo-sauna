@@ -1,0 +1,43 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Tylo Sauna",
+        "description": "Wybierz kontroler Tylo Elite wykryty w sieci lub dodaj go ręcznie.",
+        "data": {
+          "device": "Urządzenie"
+        }
+      },
+      "confirm": {
+        "title": "Skonfiguruj Tylo Sauna",
+        "description": "Jeśli włączysz „Zezwalaj na telemetrię z innych adresów IP”, Home Assistant zaakceptuje telemetrię nawet wtedy, gdy pochodzi z innego adresu IP niż ten skonfigurowany. Jest to przydatne w konfiguracjach wielowęzłowych (sauna + para) oraz w firmware, które wysyłają telemetrię z innego adresu.",
+        "data": {
+          "host": "Host / adres IP",
+          "port": "Port UDP",
+          "name": "Nazwa",
+          "allow_telemetry_from_other_ips": "Zezwalaj na telemetrię z innych adresów IP (zalecane)"
+        }
+      }
+    },
+    "error": {
+      "device_not_found": "Wybrane urządzenie nie jest już dostępne. Spróbuj ponownie.",
+      "invalid_host": "Wprowadź prawidłowy adres IP lub nazwę hosta.",
+      "invalid_port": "Wprowadź prawidłowy port UDP (1–65535)."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opcje Tylo Sauna",
+        "description": "Zmień ustawienia połączenia. Użyj „Zezwalaj na telemetrię z innych adresów IP”, jeśli telemetria jest wysyłana z innego węzła/IP (częste w systemach sauna + para).",
+        "data": {
+          "host": "Host / adres IP",
+          "port": "Port UDP",
+          "name": "Nazwa",
+          "allow_telemetry_from_other_ips": "Zezwalaj na telemetrię z innych adresów IP (zalecane)"
+        }
+      }
+    }
+  }
+}
+

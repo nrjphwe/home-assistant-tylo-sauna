@@ -1,0 +1,43 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Tylo Sauna",
+        "description": "Velg Tylo Elite-kontrolleren som ble funnet på nettverket, eller legg den til manuelt.",
+        "data": {
+          "device": "Enhet"
+        }
+      },
+      "confirm": {
+        "title": "Konfigurer Tylo Sauna",
+        "description": "Hvis du aktiverer «Tillat telemetri fra andre IP-adresser», vil Home Assistant godta telemetri selv om den kommer fra en annen IP-adresse enn den du har konfigurert. Dette er nyttig for oppsett med flere noder (badstue + damp) og firmware som sender telemetri fra en annen adresse.",
+        "data": {
+          "host": "Vert / IP-adresse",
+          "port": "UDP-port",
+          "name": "Navn",
+          "allow_telemetry_from_other_ips": "Tillat telemetri fra andre IP-adresser (anbefalt)"
+        }
+      }
+    },
+    "error": {
+      "device_not_found": "Valgt enhet er ikke lenger tilgjengelig. Prøv igjen.",
+      "invalid_host": "Skriv inn en gyldig IP-adresse eller et vertsnavn.",
+      "invalid_port": "Skriv inn en gyldig UDP-port (1–65535)."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Tylo Sauna-alternativer",
+        "description": "Endre tilkoblingsinnstillinger. Bruk «Tillat telemetri fra andre IP-adresser» hvis telemetri sendes fra en annen node/IP (vanlig for badstue + damp-systemer).",
+        "data": {
+          "host": "Vert / IP-adresse",
+          "port": "UDP-port",
+          "name": "Navn",
+          "allow_telemetry_from_other_ips": "Tillat telemetri fra andre IP-adresser (anbefalt)"
+        }
+      }
+    }
+  }
+}
+

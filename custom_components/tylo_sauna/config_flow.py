@@ -9,6 +9,8 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant, callback
 
+from .storage import EndpointStore
+
 _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "tylo_sauna"
@@ -20,8 +22,8 @@ UUID_RE = re.compile(
     rb"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
 
-DEFAULT_PORT = 42156
-
+# Fallback port shown in UI when discovery has no data.
+# Note: the controller picks a dynamic control/telemetry UDP port and it may change after reboot.
 # UI field name (user-friendly) -> stored key in entry (backward compatible)
 UI_RELAXED_KEY = "allow_telemetry_from_other_ips"
 STORED_RELAXED_KEY = "relaxed_telemetry"
@@ -172,8 +174,26 @@ class TyloSaunaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.debug("Tylo Sauna discovery(user): cannot bind %s: %s", port, exc)
 
         if not transports:
-            _LOGGER.debug("Tylo Sauna discovery(user): no UDP sockets opened")
-            return []
+            _LOGGER.debug("Tylo Sauna discovery(user): no UDP sockets opened; falling back to endpoint cache")
+            # If runtime discovery is already running, UDP ports may be occupied.
+            # In that case, fall back to the persistent endpoint cache so multi-device setup still works.
+            try:
+                store = hass.data.get(DOMAIN, {}).get("_endpoint_store")
+                if not store:
+                    store = EndpointStore(hass)
+                    await store.async_load()
+
+                devices = [
+                    DiscoveredSauna(host=rec.host, guid=str(guid), port=int(rec.port))
+                    for guid, rec in store.all_records().items()
+                    if rec and rec.host and rec.port
+                ]
+            except Exception:  # noqa: BLE001
+                devices = []
+
+            existing_entries = hass.config_entries.async_entries(DOMAIN)
+            known_guids = {e.data.get("guid") for e in existing_entries if e.data.get("guid")}
+            return [s for s in devices if s.guid not in known_guids]
 
         try:
             await asyncio.sleep(UDP_DISCOVERY_TIMEOUT)
@@ -182,6 +202,21 @@ class TyloSaunaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 t.close()
 
         devices = list(found.values())
+
+        # Persist discoveries into endpoint cache (so adding multiple devices works even if
+        # runtime discovery occupies the UDP ports after the first entry is created).
+        try:
+            store = hass.data.get(DOMAIN, {}).get("_endpoint_store")
+            if not store:
+                store = EndpointStore(hass)
+                await store.async_load()
+            for s in devices:
+                try:
+                    await store.set(guid=str(s.guid), host=str(s.host), port=int(s.port), source="config_flow")
+                except Exception:  # noqa: BLE001
+                    pass
+        except Exception:  # noqa: BLE001
+            pass
 
         # Filter only by GUID (allow multiple devices on same IP: sauna + steam)
         existing_entries = hass.config_entries.async_entries(DOMAIN)
@@ -293,11 +328,28 @@ class TyloSaunaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Manual mode
         hinted = next(iter(self._discovered.values()), None) if self._discovered else None
         hinted_host = hinted.host if hinted else ""
-        hinted_port = int(hinted.port) if hinted else int(DEFAULT_PORT)
+        hinted_port = int(hinted.port) if hinted else None
         hinted_name = (
             (hinted.name or f"Tylo Sauna {hinted_host}").strip()
             if hinted and hinted_host
             else "Tylo Sauna"
+        )
+
+        # Port is required in manual mode.
+        # - If discovery found something, pre-fill with the discovered port.
+        # - Otherwise leave blank (no misleading defaults).
+        port_field = (
+            vol.Required("port", default=int(hinted_port))
+            if hinted_port is not None
+            else vol.Required("port")
+        )
+        schema = vol.Schema(
+            {
+                vol.Required("host", default=hinted_host): str,
+                port_field: int,
+                vol.Optional("name", default=hinted_name): str,
+                vol.Optional(UI_RELAXED_KEY, default=True): bool,
+            }
         )
 
         if user_input is not None:
@@ -305,7 +357,14 @@ class TyloSaunaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if not host:
                 errors["base"] = "invalid_host"
             else:
-                port = int(user_input.get("port", DEFAULT_PORT))
+                try:
+                    port = int(user_input.get("port"))
+                except Exception:  # noqa: BLE001
+                    port = 0
+                if not (0 < port <= 65535):
+                    errors["base"] = "invalid_port"
+                    return self.async_show_form(step_id="confirm", data_schema=schema, errors=errors)
+
                 name = (user_input.get("name") or f"Tylo Sauna {host}").strip() or f"Tylo Sauna {host}"
                 relaxed = bool(user_input.get(UI_RELAXED_KEY, relaxed_default))
 
@@ -327,15 +386,6 @@ class TyloSaunaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if matched_guid:
                     data["guid"] = matched_guid
                 return self.async_create_entry(title=name, data=data)
-
-        schema = vol.Schema(
-            {
-                vol.Required("host", default=hinted_host): str,
-                vol.Optional("port", default=hinted_port): int,
-                vol.Optional("name", default=hinted_name): str,
-                vol.Optional(UI_RELAXED_KEY, default=True): bool,
-            }
-        )
         return self.async_show_form(step_id="confirm", data_schema=schema, errors=errors)
 
     @staticmethod
@@ -353,7 +403,7 @@ class TyloSaunaOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         if user_input is not None:
             host = str(user_input["host"]).strip()
-            port = int(user_input.get("port", DEFAULT_PORT))
+            port = int(user_input["port"])
             name = str(user_input.get("name", "Tylo Sauna")).strip() or "Tylo Sauna"
             relaxed = bool(user_input.get(UI_RELAXED_KEY, True))
 
@@ -369,7 +419,7 @@ class TyloSaunaOptionsFlowHandler(config_entries.OptionsFlow):
             )
 
         current = {**self._entry.data, **self._entry.options}
-        port_default = int(current.get("port", DEFAULT_PORT))
+        port_default = int(current.get("port") or 0)
         try:
             domain_data = self.hass.data.get(DOMAIN, {})
             ctrl = domain_data.get(self._entry.entry_id, {}).get("controller")
@@ -380,7 +430,7 @@ class TyloSaunaOptionsFlowHandler(config_entries.OptionsFlow):
         schema = vol.Schema(
             {
                 vol.Required("host", default=current.get("host", "")): str,
-                vol.Optional("port", default=port_default): int,
+                vol.Required("port", default=port_default): int,
                 vol.Optional("name", default=current.get("name", "Tylo Sauna")): str,
                 vol.Optional(
                     UI_RELAXED_KEY,

@@ -30,8 +30,8 @@ It describes intended behavior (UX) and the implementation contract (entities, n
 ### Networking and ports
 
 - Discovery/announce ports: UDP **54377 / 54378**.
-- Control/telemetry port: **often 42156, but not guaranteed**.
-  - The integration must not assume a fixed control port.
+- Control/telemetry port: **dynamic / session-specific** (chosen by the controller) and may change after reboot.
+  - The integration must not assume a fixed control port or a stable value across sessions.
 
 #### Identity (GUID) and endpoint caching (discovery-first)
 
@@ -55,7 +55,7 @@ Learning sources:
 To avoid “online disconnected / state unknown” after controller reboot:
 - Keep a **shared runtime discovery listener** on UDP 54377/54378 (single bind per HA instance).
 - When offline, periodically send a lightweight **INIT probe** to a small set of likely ports
-  (learned control_port, 42156, 54377, 54378).
+  (last learned control_port, discovery ports, and a small set of legacy observed candidates).
 - When a port change is detected, optionally send an immediate INIT to the new port to accelerate recovery.
 
 ---
@@ -96,7 +96,6 @@ To avoid “online disconnected / state unknown” after controller reboot:
 - `is_on`: online status derived from last received telemetry timestamp
 - Attributes (diagnostic payload):
   - `guid`
-  - `configured_host`
   - `effective_host`
   - `control_port`
   - `endpoint_source` (announce/telemetry/cache/config/manual)
