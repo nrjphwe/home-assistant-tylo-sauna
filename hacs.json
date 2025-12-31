@@ -1,7 +1,5 @@
 {
   "name": "Tylo Sauna",
-  "domains": ["tylo_sauna"],
-  "homeassistant": "2023.10.0",
   "content_in_root": false,
   "zip_release": true,
   "filename": "tylo_sauna.zip",

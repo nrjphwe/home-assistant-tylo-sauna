@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.5] - 2025-12-31
+
+### Fixed
+
+* HACS Action: adjust `hacs.json` to match the HACS validation schema.
+
 ## [0.3.4] - 2025-12-31
 
 ### Fixed
