@@ -107,6 +107,19 @@ STATE_ACKED = 10
 
 TEMP_SCALE = 9  # protocol uses temp_c * 9
 
+# Telemetry mappings (KV id -> meaning)
+# Note: the same KV id can mean different things in different message types.
+STATUS_KV_MAP: dict[int, tuple[str, callable]] = {
+    0x0A: ("t_set_c", lambda v: float(v) / TEMP_SCALE),
+    0x0C: ("t_cur_c", lambda v: float(v) / TEMP_SCALE),
+    0x11: ("stop_cfg_min", int),
+    0x16: ("stop_rem_min", int),
+}
+
+FLAGS_KV_MAP: dict[int, tuple[str, callable]] = {
+    0x0A: ("light", lambda v: bool(int(v))),
+}
+
 
 @dataclass(frozen=True)
 class Favorite:
@@ -183,6 +196,61 @@ def _pb_all_varints(msg: dict[int, list[tuple[int, Any]]], n: int) -> list[int]:
         if wt == 0:
             res.append(int(v))
     return res
+
+
+def _collect_kv_pairs(buf: bytes, *, max_depth: int = 6) -> list[tuple[int, int]]:
+    """Recursively collect KV-like pairs from protobuf-like messages.
+
+    Many Tylo messages contain repeated tiny submessages like:
+      field 1 (varint) -> key/id
+      field 2 (varint) -> value
+    wrapped in various containers.
+    """
+    if max_depth <= 0 or not buf:
+        return []
+
+    pairs: list[tuple[int, int]] = []
+    try:
+        msg = _pb_collect(buf)
+    except Exception:  # noqa: BLE001
+        return []
+
+    # Only treat a message as a KV leaf if it is *exactly* {1: varint(id), 2: varint(value)}.
+    # This avoids accidental matches in wrapper messages where fields 1/2 mean something else.
+    try:
+        if set(msg.keys()) == {1, 2} and len(msg.get(1, [])) == 1 and len(msg.get(2, [])) == 1:
+            (wt1, v1) = msg[1][0]
+            (wt2, v2) = msg[2][0]
+            if wt1 == 0 and wt2 == 0:
+                pairs.append((int(v1), int(v2)))
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Recurse into all length-delimited fields
+    for _field_no, items in msg.items():
+        for wt, val in items:
+            if wt != 2:
+                continue
+            if not isinstance(val, (bytes, bytearray)):
+                continue
+            pairs.extend(_collect_kv_pairs(bytes(val), max_depth=max_depth - 1))
+
+    return pairs
+
+
+def _extract_mapped_fields(data: bytes, mapping: dict[int, tuple[str, callable]]) -> dict[str, Any]:
+    """Extract mapped fields from a telemetry payload using KV pair extraction."""
+    out: dict[str, Any] = {}
+    for kid, raw in _collect_kv_pairs(data):
+        if kid not in mapping:
+            continue
+        name, conv = mapping[kid]
+        try:
+            # Prefer the latest value within the packet (overwrite on repeats).
+            out[name] = conv(raw)
+        except Exception:  # noqa: BLE001
+            continue
+    return out
 
 
 def parse_favorites_snapshot(payload: bytes) -> dict[int, Favorite]:
@@ -286,6 +354,11 @@ def _looks_like_tylo_telemetry(data: bytes) -> bool:
     if data.startswith(b"\xf2\x83\x01"):  # fault event (field 2110)
         return True
 
+    # Known telemetry families (KV status + flags)
+    if data.startswith(b"\xd2\x7d") or data.startswith(b"\xda\x7d"):
+        return True
+
+    # Legacy markers (very reliable for sauna-only firmwares)
     markers = (
         b"\xd2\x7d\x05\x08\x0a\x10",  # Tset
         b"\xd2\x7d\x05\x08\x0c\x10",  # Tcur
@@ -295,7 +368,11 @@ def _looks_like_tylo_telemetry(data: bytes) -> bool:
         b"\xd2\x7d\x05\x08\x16\x10",  # StopRem
         b"\xda\x7d\x04\x08\x0a\x10",  # Light flag
     )
-    return any(m in data for m in markers)
+    if any(m in data for m in markers):
+        return True
+
+    # Fallback: generic extractor (best-effort)
+    return bool(_extract_mapped_fields(data, STATUS_KV_MAP) or _extract_mapped_fields(data, FLAGS_KV_MAP))
 
 
 class SaunaProtocol(asyncio.DatagramProtocol):
@@ -788,36 +865,103 @@ class SaunaController:
     def _handle_telemetry(self, data: bytes) -> None:
         changed = False
 
-        light = self._parse_light(data)
-        if light is not None and light != self.light:
-            self.light = light
-            changed = True
+        def _parse_light_flag_from_bytes(buf: bytes) -> bool | None:
+            """Parse the light flag from any buffer by searching known da7d light patterns."""
+            patterns = (
+                bytes.fromhex("da7d04080a10"),  # common
+                bytes.fromhex("da7d05080a10"),  # observed variant (length differs)
+            )
+            best_idx = -1
+            best_pat = None
+            for pat in patterns:
+                idx = buf.rfind(pat)
+                if idx > best_idx:
+                    best_idx = idx
+                    best_pat = pat
+            if best_idx != -1 and best_pat is not None and best_idx + len(best_pat) < len(buf):
+                b = buf[best_idx + len(best_pat)]
+                if b in (0, 1):
+                    return bool(b)
+            return None
 
-        stop_cfg = self._parse_stop_cfg(data)
-        if stop_cfg is not None and stop_cfg != self.stop_cfg_min:
-            self.stop_cfg_min = stop_cfg
-            changed = True
+        # Flags (e.g., light)
+        if data.startswith(b"\xda\x7d"):
+            # Prefer the legacy pattern-based parsing for stability.
+            # Observed flag form: da 7d 04 08 0a 10 <0|1>
+            val = _parse_light_flag_from_bytes(data)
+            if val is not None and val != self.light:
+                self.light = val
+                changed = True
 
-        stop_rem = self._parse_stop_rem(data)
-        if stop_rem is not None and stop_rem != self.stop_rem_min:
-            self.stop_rem_min = stop_rem
-            changed = True
+        # Status KV (temps, timers, etc.)
+        if data.startswith(b"\xd2\x7d"):
+            # Prefer legacy prefix parsing for known fields (stable across current sauna firmwares).
+            # This avoids accidental KV collisions in nested messages.
+            vals: dict[str, Any] = {}
 
+            # stop_cfg_min
+            stop_cfg = None
+            for prefix_hex in ("d27d05081110", "d27d04081110"):
+                stop_cfg = _parse_varint_after(data, prefix_hex)
+                if stop_cfg is not None:
+                    break
+            if stop_cfg is not None:
+                vals["stop_cfg_min"] = int(stop_cfg)
+
+            # stop_rem_min
+            stop_rem = None
+            for prefix_hex in ("d27d05081610", "d27d04081610"):
+                stop_rem = _parse_varint_after(data, prefix_hex)
+                if stop_rem is not None:
+                    break
+            if stop_rem is not None:
+                vals["stop_rem_min"] = int(stop_rem)
+
+            # temperatures (raw = °C * 9)
+            t_set_raw = _parse_varint_after(data, "d27d05080a10")
+            if t_set_raw is not None:
+                vals["t_set_c"] = float(t_set_raw) / TEMP_SCALE
+
+            t_cur_raw = _parse_varint_after(data, "d27d05080c10")
+            if t_cur_raw is not None:
+                vals["t_cur_c"] = float(t_cur_raw) / TEMP_SCALE
+
+            # Light flag is sometimes embedded inside the status packet (observed in captures).
+            # Prefer this over any unrelated da7d packets that may contain other internal flags.
+            light_val = _parse_light_flag_from_bytes(data)
+            if light_val is not None and light_val != self.light:
+                self.light = light_val
+                changed = True
+
+            # Fallback: generic KV extractor to help future variants (e.g., steam/humidity)
+            # but only fill missing values (never overwrite stable legacy parsed values).
+            if len(vals) < 4:
+                fallback = _extract_mapped_fields(data, STATUS_KV_MAP)
+                for k, v in fallback.items():
+                    vals.setdefault(k, v)
+
+            if "stop_cfg_min" in vals and vals["stop_cfg_min"] != self.stop_cfg_min:
+                self.stop_cfg_min = int(vals["stop_cfg_min"])
+                changed = True
+
+            if "stop_rem_min" in vals and vals["stop_rem_min"] != self.stop_rem_min:
+                self.stop_rem_min = int(vals["stop_rem_min"])
+                changed = True
+
+            if "t_set_c" in vals and vals["t_set_c"] != self.t_set_c:
+                self.t_set_c = float(vals["t_set_c"])
+                changed = True
+
+            if "t_cur_c" in vals and vals["t_cur_c"] != self.t_cur_c:
+                self.t_cur_c = float(vals["t_cur_c"])
+                changed = True
+
+        # Derive HEAT from remaining time if available.
         new_heat = None
         if self.stop_rem_min is not None:
             new_heat = self.stop_rem_min > 0
         if new_heat is not None and new_heat != self.heat:
             self.heat = new_heat
-            changed = True
-
-        t_set_c = self._parse_temp_set(data)
-        if t_set_c is not None and t_set_c != self.t_set_c:
-            self.t_set_c = t_set_c
-            changed = True
-
-        t_cur_c = self._parse_temp_cur(data)
-        if t_cur_c is not None and t_cur_c != self.t_cur_c:
-            self.t_cur_c = t_cur_c
             changed = True
 
         if changed:
@@ -836,44 +980,6 @@ class SaunaController:
                 self.tx_packets,
             )
             self._notify_listeners()
-
-    def _parse_light(self, data: bytes) -> bool | None:
-        pattern = bytes.fromhex("da7d04080a10")
-        idx = data.find(pattern)
-        if idx == -1 or idx + len(pattern) >= len(data):
-            return None
-        val = data[idx + len(pattern)]
-        if val == 1:
-            return True
-        if val == 0:
-            return False
-        return None
-
-    def _parse_stop_cfg(self, data: bytes) -> int | None:
-        for prefix_hex in ("d27d05081110", "d27d04081110"):
-            val = _parse_varint_after(data, prefix_hex)
-            if val is not None:
-                return val
-        return None
-
-    def _parse_stop_rem(self, data: bytes) -> int | None:
-        for prefix_hex in ("d27d05081610", "d27d04081610"):
-            val = _parse_varint_after(data, prefix_hex)
-            if val is not None:
-                return val
-        return None
-
-    def _parse_temp_set(self, data: bytes) -> float | None:
-        raw = _parse_varint_after(data, "d27d05080a10")
-        if raw is None:
-            return None
-        return raw / 9.0
-
-    def _parse_temp_cur(self, data: bytes) -> float | None:
-        raw = _parse_varint_after(data, "d27d05080c10")
-        if raw is None:
-            return None
-        return raw / 9.0
 
     # === API for entities ===
 

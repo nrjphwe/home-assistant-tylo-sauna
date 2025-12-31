@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.2] - 2025-12-31
+
+### Fixed
+
+* More correct light state synchronization (prevents false “OFF” updates while the light is still on).
+
 ## [0.3.1] - 2025-12-30
 
 ### Changed
