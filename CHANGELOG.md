@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.4] - 2025-12-31
+
+### Fixed
+
+* Hassfest: manifest key ordering and config-entry-only schema declaration (required for HACS default inclusion checks).
+
 ## [0.3.3] - 2025-12-31
 
 ### Changed

@@ -4,6 +4,7 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
 
 from .const import (
     CONF_GUID,
@@ -18,6 +19,7 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = ["climate", "light", "number", "sensor", "select", "binary_sensor"]
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)  # Только config entries (без YAML)
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
