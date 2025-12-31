@@ -96,6 +96,12 @@ For each configured controller the integration creates one device with:
 4. Restart Home Assistant
 5. Settings → Devices & Services → Add Integration → **Tylo Sauna**
 
+#### Updates via HACS (important)
+
+HACS update notifications are typically driven by **GitHub Releases/Tags**.
+If you installed this as a custom repository and do not see update prompts, make sure the repository has a newer GitHub release (e.g. tag `v0.3.2`).
+In HACS you can also force a refresh: open the integration in HACS → menu (⋮) → **Reload** / **Update information** (wording depends on HACS version).
+
 ### Manual
 
 Copy `custom_components/tylo_sauna/` into your HA `config/custom_components/` and restart HA.
@@ -146,6 +152,16 @@ If you upgrade from an older version and see duplicated entities (for example `*
 3. Add the integration again.
 
 Alternative (advanced): manually clean up old entities in the entity registry instead of re-adding.
+
+---
+
+## Maintainers: releasing a new version
+
+1. Bump `custom_components/tylo_sauna/manifest.json` `"version"` (use semantic versioning).
+2. Update `CHANGELOG.md`.
+3. Create and push a tag `vX.Y.Z` (for example `v0.3.3`).
+4. GitHub Actions will publish a GitHub Release with `tylo_sauna.zip` attached.
+   HACS will then detect the new version and offer an update.
 
 ---
 

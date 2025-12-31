@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3] - 2025-12-31
+
+### Changed
+
+* HACS release/updates: added GitHub Actions for validation (HACS + hassfest) and automatic GitHub Releases with `tylo_sauna.zip`.
+  This makes update detection in HACS more reliable (especially for custom repositories).
+
 ## [0.3.2] - 2025-12-31
 
 ### Fixed
