@@ -20,7 +20,8 @@ jobs:
       - name: Build zip
         run: |
           mkdir -p dist
-          zip -r "dist/tylo_sauna.zip" "custom_components/tylo_sauna"
+          cd custom_components
+          zip -r "../dist/tylo_sauna.zip" "tylo_sauna"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
