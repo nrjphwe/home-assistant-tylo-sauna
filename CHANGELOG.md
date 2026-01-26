@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.8] - 2026-01-27
+
+### Fixed
+
+* Fixed HACS installation creating nested directory structure (`tylo_sauna/tylo_sauna/`), causing integration not to load.
+
 ## [0.3.7] - 2026-01-27
 
 ### Added

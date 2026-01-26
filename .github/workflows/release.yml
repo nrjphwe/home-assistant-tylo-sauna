@@ -20,8 +20,10 @@ jobs:
       - name: Build zip
         run: |
           mkdir -p dist
-          cd custom_components
-          zip -r "../dist/tylo_sauna.zip" "tylo_sauna"
+          # IMPORTANT: zip must contain files at ROOT (no folder wrapper)
+          # HACS extracts zip INTO custom_components/tylo_sauna/
+          cd custom_components/tylo_sauna
+          zip -r "../../dist/tylo_sauna.zip" . -x "*.pyc" -x "__pycache__/*"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
