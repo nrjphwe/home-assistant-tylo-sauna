@@ -30,4 +30,7 @@ dist/
 # Logs
 *.log
 
+# Protocol dumps (local only, not for GitHub)
+/dumps/
+
 
