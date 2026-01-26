@@ -4,7 +4,6 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_validation as cv
 
 from .const import (
     CONF_GUID,
@@ -12,14 +11,22 @@ from .const import (
     CONF_NAME,
     CONF_PORT,
     CONF_RELAXED_TELEMETRY,
+    CONF_EXPERIMENTAL_AROMA,
     DOMAIN,
     DEFAULT_CONTROL_PORT,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = ["climate", "light", "number", "sensor", "select", "binary_sensor"]
-CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)  # Только config entries (без YAML)
+# Важно: platform `button` подключаем, но сущности создаём только при включённых экспериментальных опциях,
+# чтобы это не влияло на обычных пользователей.
+PLATFORMS = ["climate", "light", "number", "sensor", "select", "binary_sensor", "button"]
+
+# Интеграция использует только config entries (config flow) и не поддерживает YAML.
+# Раньше тут был `CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)`, но в разных версиях HA
+# `homeassistant.helpers.config_validation`/этот хелпер мог меняться, из-за чего интеграция могла не
+# загрузиться вообще и пропадала из списка “Add integration”.
+# Поэтому намеренно не определяем CONFIG_SCHEMA: это безопасно и совместимо.
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -47,6 +54,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     guid = cfg.get(CONF_GUID)  # may exist for discovery-based setup
     relaxed = bool(cfg.get(CONF_RELAXED_TELEMETRY, True))
+    experimental_aroma = bool(cfg.get(CONF_EXPERIMENTAL_AROMA, False))
 
     controller = SaunaController(
         hass=hass,
@@ -55,6 +63,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         name=name,
         guid=guid,
         relaxed_telemetry=relaxed,
+        experimental_aroma=experimental_aroma,
     )
 
     # Stable id for device/entities (do NOT use host here, because host can change via OptionsFlow)

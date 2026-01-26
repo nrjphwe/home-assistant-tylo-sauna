@@ -27,6 +27,7 @@ UUID_RE = re.compile(
 # UI field name (user-friendly) -> stored key in entry (backward compatible)
 UI_RELAXED_KEY = "allow_telemetry_from_other_ips"
 STORED_RELAXED_KEY = "relaxed_telemetry"
+EXPERIMENTAL_AROMA_KEY = "experimental_aroma"
 
 
 def _decode_varint(buf: bytes, idx: int) -> tuple[int | None, int]:
@@ -406,6 +407,7 @@ class TyloSaunaOptionsFlowHandler(config_entries.OptionsFlow):
             port = int(user_input["port"])
             name = str(user_input.get("name", "Tylo Sauna")).strip() or "Tylo Sauna"
             relaxed = bool(user_input.get(UI_RELAXED_KEY, True))
+            experimental_aroma = bool(user_input.get(EXPERIMENTAL_AROMA_KEY, False))
 
             # store in entry.options
             return self.async_create_entry(
@@ -415,6 +417,7 @@ class TyloSaunaOptionsFlowHandler(config_entries.OptionsFlow):
                     "port": port,
                     "name": name,
                     STORED_RELAXED_KEY: relaxed,
+                    EXPERIMENTAL_AROMA_KEY: experimental_aroma,
                 },
             )
 
@@ -435,6 +438,11 @@ class TyloSaunaOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(
                     UI_RELAXED_KEY,
                     default=bool(current.get(STORED_RELAXED_KEY, True)),
+                ): bool,
+                # Экспериментальная опция для steam/aroma устройств (по умолчанию выключена).
+                vol.Optional(
+                    EXPERIMENTAL_AROMA_KEY,
+                    default=bool(current.get(EXPERIMENTAL_AROMA_KEY, False)),
                 ): bool,
             }
         )

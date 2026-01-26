@@ -120,6 +120,42 @@ Observed commands:
 - Plus an “aux” packet often sent with heat actions:
   - `d2 3e 02 08 1f`
 
+### Steam / aroma-related (observed on steam controllers)
+The capture set `Steam verde*.pcapng` shows additional command traffic that is not present in typical sauna-only captures.
+
+#### Unknown `c2 43` variant
+In addition to ON/OFF values (`0b`/`0a`) there is a third observed value:
+- `c2 43 02 50 0c`
+
+The sauna/controller acknowledges `c2 43` commands with a short ACK-like packet:
+- `92 80 01 02 58 <value>`
+  - Examples seen: `... 58 0b` and `... 58 0c`
+
+At the time of writing we **do not** have a confirmed semantic meaning for `0c`.
+
+#### Aroma / scent action (Eucalyptus)
+In the same capture, the client sends an “aroma-like” message that contains an ASCII-like string and two small parameter blocks.
+
+Client → sauna (observed 1–2 times close together when pressing the aroma/pump UI):
+- Prefix: `92 44 ...` (protobuf field ~1090, length-delimited)
+- Inner payload contains:
+  - `field1=0`
+  - `field2=12`
+  - `field3`: repeated varint bytes forming a UTF-8/ASCII string:
+    - Observed bytes decode to `Geucalyptus` (very likely intended to be `Eucalyptus`)
+  - `field5` (len=4): two varints: `field10=0x0b`, `field11=60`
+  - `field6` (len=4): two varints: `field10=0x0a`, `field11=5`
+
+Example (full payload as seen on the wire):
+- `92 44 1a 08 00 10 0c 18 47 18 65 18 75 18 63 18 61 18 6c 18 79 18 70 18 74 18 75 18 73 22 00 2a 04 50 0b 58 3c 32 04 50 0a 58 05`
+- A second variant differs only by `22 01` vs `22 00` (field4 = 1/0), suggesting a toggle/flag.
+
+Sauna → clients response/echo:
+- Prefix: `b2 81 01 ...` (protobuf field ~2070, length-delimited)
+- The response body contains the same inner structure as the request (echoed back to all connected clients).
+
+These packets strongly suggest that some steam controllers support an **aroma pump / scent injection** feature.
+
 ## Door safety: fault/event model
 The system uses faults rather than a continuously published “door open/closed” boolean.
 

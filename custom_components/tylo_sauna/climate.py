@@ -14,6 +14,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 
 from . import DOMAIN
+from .controller import MODE_OFF, MODE_HEAT, MODE_STANDBY
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ async def async_setup_entry(
 
 class TyloSaunaClimate(ClimateEntity):
     _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
-    _attr_hvac_modes = [HVACMode.HEAT, HVACMode.OFF]
+    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT_COOL, HVACMode.HEAT]  # OFF, Standby, Heat
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_min_temp = 40.0
     _attr_max_temp = 110.0
@@ -61,6 +62,14 @@ class TyloSaunaClimate(ClimateEntity):
 
     @property
     def hvac_mode(self) -> HVACMode | None:
+        mode = self._controller.current_mode
+        if mode == MODE_HEAT:
+            return HVACMode.HEAT
+        elif mode == MODE_STANDBY:
+            return HVACMode.HEAT_COOL  # Standby = "Heat/Cool" in HA
+        elif mode == MODE_OFF:
+            return HVACMode.OFF
+        # Fallback to legacy heat detection if current_mode not yet received
         heat = self._controller.heat
         if heat is None:
             return None
@@ -88,10 +97,16 @@ class TyloSaunaClimate(ClimateEntity):
         # Door / fault state
         attrs["door_fault_pending"] = bool(getattr(self._controller, "door_fault_pending", False))
 
+        # Standby mode info
+        attrs["standby_enabled"] = bool(getattr(self._controller, "standby_enabled", False))
+        if self._controller.standby_delta_c is not None:
+            attrs["standby_delta_c"] = self._controller.standby_delta_c
+
         return attrs
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
-        if hvac_mode == HVACMode.HEAT:
+        # Check door fault before any heating mode
+        if hvac_mode in (HVACMode.HEAT, HVACMode.HEAT_COOL):
             if getattr(self._controller, "door_fault_pending", False):
                 fault = getattr(self._controller, "last_fault", None)
                 msg = fault.message if fault and fault.message else "Door fault requires acknowledgement"
@@ -102,7 +117,11 @@ class TyloSaunaClimate(ClimateEntity):
                     notification_id=f"tylo_sauna_blocked_{getattr(self._controller,'device_id', self._controller.host)}",
                 )
                 raise HomeAssistantError("Tylo Sauna start blocked: acknowledge door fault first")
+
+        if hvac_mode == HVACMode.HEAT:
             self._controller.heat_on()
+        elif hvac_mode == HVACMode.HEAT_COOL:  # Standby mode
+            self._controller.standby()
         elif hvac_mode == HVACMode.OFF:
             self._controller.heat_off()
         else:

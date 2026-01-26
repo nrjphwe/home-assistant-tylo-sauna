@@ -33,7 +33,26 @@ LIGHT_ON_PAYLOAD  = bytes.fromhex("a24204080a1001")
 # Heating commands
 HEAT_ON_PAYLOAD  = bytes.fromhex("c24302500b")
 HEAT_OFF_PAYLOAD = bytes.fromhex("c24302500a")
+STANDBY_PAYLOAD  = bytes.fromhex("c24302500c")  # standby mode (reduced temperature)
 HEAT_AUX_PAYLOAD = bytes.fromhex("d23e02081f")  # extra packet sent by the app for HEAT
+
+# Operating modes (from telemetry response 9280010258XX)
+MODE_OFF = 0x0a
+MODE_HEAT = 0x0b
+MODE_STANDBY = 0x0c
+
+# --- Steam/Aroma (экспериментально) ---
+# Наблюдалось на steam-контроллере с ароматизацией (Eucalyptus) в `Steam verde*.pcapng`.
+# Важно: семантика поля `22 00/01` пока не подтверждена на 100%, поэтому делаем две отдельные кнопки ON/OFF.
+AROMA_EUCALYPTUS_OFF = bytes.fromhex(
+    "92441a0800100c184718651875187220002a04500b583c3204500a5805"
+)
+AROMA_EUCALYPTUS_ON = bytes.fromhex(
+    "92441a0800100c184718651875187220012a04500b583c3204500a5805"
+)
+
+# Echo/response от контроллера после aroma-команды (protobuf field ~2070)
+AROMA_EVENT_PREFIX = bytes.fromhex("b28101")
 
 UUID_RE = re.compile(
     rb"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
@@ -413,6 +432,7 @@ class SaunaController:
         port: int = 54377,
         guid: str | None = None,
         relaxed_telemetry: bool = False,
+        experimental_aroma: bool = False,
     ):
         self._hass = hass
         self.name = name
@@ -440,6 +460,8 @@ class SaunaController:
 
         self.guid = guid
         self.relaxed_telemetry = relaxed_telemetry
+        # Экспериментальные функции включаются только явно через OptionsFlow.
+        self.experimental_aroma = bool(experimental_aroma)
         self.endpoint_source: str = "config"
 
         self._transport: asyncio.DatagramTransport | None = None
@@ -460,6 +482,11 @@ class SaunaController:
         self.last_fault: FaultEvent | None = None
         self.door_fault_pending: bool = False
 
+        # Standby mode
+        self.current_mode: int | None = None  # MODE_OFF/MODE_HEAT/MODE_STANDBY
+        self.standby_enabled: bool = False    # standby available in settings
+        self.standby_delta_c: float | None = None  # temperature reduction in standby
+
         # Favorites / presets
         self.favorites: dict[int, Favorite] = {}
         self.last_selected_favorite_slot: int | None = None
@@ -468,6 +495,11 @@ class SaunaController:
         self.rx_packets = 0
         self.tx_packets = 0
         self.last_rx_monotonic: float | None = None
+
+        # --- Aroma diagnostics (экспериментально) ---
+        self.last_aroma_name: str | None = None
+        self.last_aroma_flag: int | None = None
+        self.last_aroma_dt = None  # datetime in UTC
 
         # Callbacks to notify entities
         self._callbacks: list[callable] = []
@@ -845,6 +877,39 @@ class SaunaController:
                 self._notify_listeners()
             return
 
+        # --- Mode response (9280010258XX) ---
+        # Response after mode change command: 0a=OFF, 0b=HEAT, 0c=STANDBY
+        mode_pattern = bytes.fromhex("9280010258")
+        if mode_pattern in data:
+            idx = data.find(mode_pattern)
+            if idx + len(mode_pattern) < len(data):
+                mode_byte = data[idx + len(mode_pattern)]
+                if mode_byte in (MODE_OFF, MODE_HEAT, MODE_STANDBY):
+                    if mode_byte != self.current_mode:
+                        self.current_mode = mode_byte
+                        mode_names = {MODE_OFF: "OFF", MODE_HEAT: "HEAT", MODE_STANDBY: "STANDBY"}
+                        _LOGGER.info("Tylo Sauna mode: %s (0x%02x)", mode_names.get(mode_byte, "?"), mode_byte)
+                        self._notify_listeners()
+
+        # --- Aroma events (steam controllers) ---
+        # Стабильный признак: начинается с `b2 81 01` (field 2070, length-delimited).
+        if self.experimental_aroma and data.startswith(AROMA_EVENT_PREFIX):
+            try:
+                name, flag = self._parse_aroma_event(data)
+                if name is not None:
+                    self.last_aroma_name = str(name)
+                if flag is not None:
+                    self.last_aroma_flag = int(flag)
+                self.last_aroma_dt = dt_util.utcnow()
+                _LOGGER.info(
+                    "Tylo Steam aroma event: name=%s flag=%s", self.last_aroma_name, self.last_aroma_flag
+                )
+                self._notify_listeners()
+            except Exception:  # noqa: BLE001
+                pass
+            # Не return: после события иногда идут телеметрийные куски, но этот пакет нам не нужен как telemetry.
+            return
+
         self._handle_telemetry(data)
 
     def _maybe_learn_control_port(self, src_port: int, data: bytes) -> None:
@@ -884,7 +949,7 @@ class SaunaController:
                     return bool(b)
             return None
 
-        # Flags (e.g., light)
+        # Flags (e.g., light, standby_enabled)
         if data.startswith(b"\xda\x7d"):
             # Prefer the legacy pattern-based parsing for stability.
             # Observed flag form: da 7d 04 08 0a 10 <0|1>
@@ -892,6 +957,21 @@ class SaunaController:
             if val is not None and val != self.light:
                 self.light = val
                 changed = True
+
+            # Standby enabled flag (field 0x0b): da 7d 04 08 0b 10 <0|1>
+            standby_patterns = (
+                bytes.fromhex("da7d04080b10"),
+                bytes.fromhex("da7d05080b10"),
+            )
+            for pat in standby_patterns:
+                idx = data.find(pat)
+                if idx != -1 and idx + len(pat) < len(data):
+                    sb_val = bool(data[idx + len(pat)])
+                    if sb_val != self.standby_enabled:
+                        self.standby_enabled = sb_val
+                        _LOGGER.info("Tylo Sauna standby_enabled: %s", sb_val)
+                        changed = True
+                    break
 
         # Status KV (temps, timers, etc.)
         if data.startswith(b"\xd2\x7d"):
@@ -926,6 +1006,11 @@ class SaunaController:
             if t_cur_raw is not None:
                 vals["t_cur_c"] = float(t_cur_raw) / TEMP_SCALE
 
+            # standby temperature delta (field 0x0b): d27d 05 08 0b 10 <varint>
+            standby_delta_raw = _parse_varint_after(data, "d27d05080b10")
+            if standby_delta_raw is not None:
+                vals["standby_delta_c"] = float(standby_delta_raw) / TEMP_SCALE
+
             # Light flag is sometimes embedded inside the status packet (observed in captures).
             # Prefer this over any unrelated da7d packets that may contain other internal flags.
             light_val = _parse_light_flag_from_bytes(data)
@@ -954,6 +1039,11 @@ class SaunaController:
 
             if "t_cur_c" in vals and vals["t_cur_c"] != self.t_cur_c:
                 self.t_cur_c = float(vals["t_cur_c"])
+                changed = True
+
+            if "standby_delta_c" in vals and vals["standby_delta_c"] != self.standby_delta_c:
+                self.standby_delta_c = float(vals["standby_delta_c"])
+                _LOGGER.info("Tylo Sauna standby_delta: %.1f°C", self.standby_delta_c)
                 changed = True
 
         # Derive HEAT from remaining time if available.
@@ -1013,6 +1103,11 @@ class SaunaController:
         self._send(HEAT_OFF_PAYLOAD, "HEAT OFF")
         self._send(HEAT_AUX_PAYLOAD, "HEAT AUX")
 
+    def standby(self) -> None:
+        """Activate standby mode (reduced temperature heating)."""
+        self._send(STANDBY_PAYLOAD, "STANDBY")
+        self._send(HEAT_AUX_PAYLOAD, "STANDBY AUX")
+
     async def async_set_temperature(self, temp_c: float) -> None:
         raw = int(round(temp_c * 9.0))
         prefix = bytes.fromhex("d24105080a10")
@@ -1063,3 +1158,59 @@ class SaunaController:
             return
         payload = encode_fault_ack(self.last_fault)
         self._send(payload, "ACK_FAULT")
+
+    # --- Steam/Aroma commands (экспериментально) ---
+
+    def aroma_eucalyptus_on(self) -> None:
+        """Включить ароматизацию (Eucalyptus) — экспериментально."""
+        if not getattr(self, "experimental_aroma", False):
+            _LOGGER.warning("Tylo Sauna: aroma command ignored (experimental_aroma disabled)")
+            return
+        self._send(AROMA_EUCALYPTUS_ON, "AROMA_EUCALYPTUS_ON")
+
+    def aroma_eucalyptus_off(self) -> None:
+        """Выключить ароматизацию (Eucalyptus) — экспериментально."""
+        if not getattr(self, "experimental_aroma", False):
+            _LOGGER.warning("Tylo Sauna: aroma command ignored (experimental_aroma disabled)")
+            return
+        self._send(AROMA_EUCALYPTUS_OFF, "AROMA_EUCALYPTUS_OFF")
+
+    def _parse_aroma_event(self, payload: bytes) -> tuple[str | None, int | None]:
+        """Best-effort парсер echo от steam-контроллера после aroma-команды.
+
+        Ожидаем структуру:
+        - field 2070 (len-delimited) → внутри field2 (len-delimited, тот же body что у `92 44 ...`)
+        - у body: field3 = bytes (как repeated varint), field4 = 0/1 (varint)
+        """
+        top = _pb_collect(payload)
+        # field 2070
+        items = top.get(2070, [])
+        if not items:
+            return None, None
+
+        wt, raw = items[0]
+        if wt != 2:
+            return None, None
+
+        inner = _pb_collect(raw)
+        # В observed payload у echo есть field2: bytes (len=0x1a)
+        body_raw = None
+        for wti, vi in inner.get(2, []):
+            if wti == 2 and isinstance(vi, (bytes, bytearray)):
+                body_raw = bytes(vi)
+                break
+        if not body_raw:
+            return None, None
+
+        body = _pb_collect(body_raw)
+        name = None
+        flag = _pb_first_varint(body, 4)
+        try:
+            # field3 как "repeated bytes via varint"
+            name = bytes(_pb_all_varints(body, 3)).decode("utf-8", errors="replace")
+            if name:
+                name = name.strip()
+        except Exception:  # noqa: BLE001
+            name = None
+
+        return name, int(flag) if flag is not None else None

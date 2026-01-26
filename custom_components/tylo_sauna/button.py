@@ -19,26 +19,53 @@ async def async_setup_entry(
         return
 
     controller = data["controller"]
-    async_add_entities([TyloSaunaAckFaultButton(controller)])
-    _LOGGER.info("Tylo Sauna ack fault button added")
+    # Важно: не добавляем кнопки всем. Экспериментальные кнопки создаём только при включённой опции.
+    if not bool(getattr(controller, "experimental_aroma", False)):
+        return
+
+    async_add_entities(
+        [
+            TyloSteamAromaEucalyptusOnButton(controller),
+            TyloSteamAromaEucalyptusOffButton(controller),
+        ]
+    )
+    _LOGGER.info("Tylo Steam aroma buttons added (experimental)")
 
 
-class TyloSaunaAckFaultButton(ButtonEntity):
-    """Acknowledge the last fault popup (door cancel etc.)."""
-
+class _BaseTyloButton(ButtonEntity):
     def __init__(self, controller) -> None:
         self._controller = controller
-        self._attr_name = f"{controller.name} acknowledge fault"
-        self._attr_unique_id = f"tylo_sauna_{controller.host}_ack_fault"
+        self._device_id = getattr(controller, "device_id", controller.host)
 
     @property
     def device_info(self) -> DeviceInfo:
         return DeviceInfo(
-            identifiers={(DOMAIN, self._controller.host)},
+            identifiers={(DOMAIN, self._device_id)},
             name=self._controller.name,
             manufacturer="Tylo",
             model="Elite",
         )
 
+
+class TyloSteamAromaEucalyptusOnButton(_BaseTyloButton):
+    """Экспериментальная кнопка: включить ароматизацию (Eucalyptus)."""
+
+    def __init__(self, controller) -> None:
+        super().__init__(controller)
+        self._attr_name = f"{controller.name} aroma eucalyptus ON (experimental)"
+        self._attr_unique_id = f"tylo_sauna_{self._device_id}_aroma_eucalyptus_on"
+
     async def async_press(self) -> None:
-        await self._controller.async_ack_last_fault()
+        self._controller.aroma_eucalyptus_on()
+
+
+class TyloSteamAromaEucalyptusOffButton(_BaseTyloButton):
+    """Экспериментальная кнопка: выключить ароматизацию (Eucalyptus)."""
+
+    def __init__(self, controller) -> None:
+        super().__init__(controller)
+        self._attr_name = f"{controller.name} aroma eucalyptus OFF (experimental)"
+        self._attr_unique_id = f"tylo_sauna_{self._device_id}_aroma_eucalyptus_off"
+
+    async def async_press(self) -> None:
+        self._controller.aroma_eucalyptus_off()

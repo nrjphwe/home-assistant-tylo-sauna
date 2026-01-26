@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.3.7] - 2026-01-27
+
+### Added
+
+* **Standby mode support**: three HVAC modes (`off` / `heat_cool` / `heat`) when standby is enabled on the physical Tylo panel.
+  * `heat_cool` represents standby mode (reduced temperature heating).
+  * New climate attributes: `standby_enabled`, `standby_delta_c` (temperature reduction in °C).
+  * Door fault blocking now applies to both `heat` and `heat_cool` (standby) modes.
+
+### Fixed
+
+* Fixed duplicate `async_press` method in experimental aroma button entity.
+
+## [0.3.6] - 2026-01-26
+
+### Fixed
+
+* Fixed broken installation (HACS/manual).
+
 ## [0.3.5] - 2025-12-31
 
 ### Fixed

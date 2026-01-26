@@ -15,14 +15,16 @@ For each configured controller the integration creates one device with:
 
 * **Climate** – `climate.tylo_sauna`
 
-  * HVAC modes: `off` / `heat`
+  * HVAC modes: `off` / `heat_cool` (standby) / `heat`
   * Target temperature (°C)
   * Current temperature (°C)
   * Attributes:
 
-    * `stop_after_min` – configured “Stop after” (minutes)
+    * `stop_after_min` – configured "Stop after" (minutes)
     * `stop_remaining_min` – remaining countdown to auto-off (minutes)
     * `door_fault_pending` – blocks starting heat when acknowledgement is required
+    * `standby_enabled` – whether standby mode is configured on the controller
+    * `standby_delta_c` – temperature reduction in standby mode (°C)
 
 * **Light** – `light.tylo_sauna_light`
 
@@ -211,6 +213,74 @@ If you capture in Wireshark, filtering by IP is the safest starting point (e.g. 
 If you capture on a desktop (Mac/PC), make sure that machine is an endpoint of the UDP session — the easiest way is to open the official Tylo app there and confirm it discovers the controller before starting the capture.
 
 Attach the `.pcapng` to the GitHub issue.
+
+---
+
+## Standby mode
+
+Standby mode is an **optional feature** configured on the physical Tylo panel (not via the app or this integration).
+
+When enabled on the panel:
+
+1. The controller advertises standby as available (`standby_enabled: true`)
+2. The integration exposes three HVAC modes:
+   * `off` – sauna is off
+   * `heat_cool` – **standby mode** (reduced temperature heating)
+   * `heat` – full heating
+3. The temperature reduction is shown in the `standby_delta_c` attribute (e.g., 18°C means the sauna heats to `target - 18°C` in standby)
+
+**Note:** Home Assistant's climate entity uses `heat_cool` as the closest standard mode for standby. You can customize the display name in your dashboard using a custom card or template.
+
+### UI customization example
+
+To display "Standby" instead of "Heat/Cool" in a Lovelace card, use a custom button or conditional card:
+
+```yaml
+type: horizontal-stack
+cards:
+  - type: button
+    name: "Off"
+    tap_action:
+      action: call-service
+      service: climate.set_hvac_mode
+      service_data:
+        entity_id: climate.tylo_sauna
+        hvac_mode: "off"
+  - type: button
+    name: "Standby"
+    tap_action:
+      action: call-service
+      service: climate.set_hvac_mode
+      service_data:
+        entity_id: climate.tylo_sauna
+        hvac_mode: "heat_cool"
+  - type: button
+    name: "Heat"
+    tap_action:
+      action: call-service
+      service: climate.set_hvac_mode
+      service_data:
+        entity_id: climate.tylo_sauna
+        hvac_mode: "heat"
+```
+
+---
+
+## Experimental: Steam Aroma (Eucalyptus)
+
+> ⚠️ **Experimental feature** — needs testing from users with Tylo Steam controllers.
+
+For **Tylo Steam** controllers with an aroma pump (e.g., Eucalyptus), there is an experimental option to expose ON/OFF buttons:
+
+1. Settings → Devices & Services → **Tylo Sauna** → Configure
+2. Enable **"Experimental aroma buttons"**
+3. Reload the integration
+
+This creates two button entities:
+* `button.tylo_sauna_aroma_eucalyptus_on`
+* `button.tylo_sauna_aroma_eucalyptus_off`
+
+**Why experimental?** The aroma protocol was reverse-engineered from a single capture and has not been tested on real hardware. If you have a Steam controller with aroma pump, please test and report results in [GitHub Issues](https://github.com/skyer/home-assistant-tylo-sauna/issues).
 
 ---
 

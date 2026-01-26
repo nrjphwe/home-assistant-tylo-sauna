@@ -9,6 +9,10 @@ CONF_NAME = "name"
 CONF_GUID = "guid"
 CONF_RELAXED_TELEMETRY = "relaxed_telemetry"
 
+# Экспериментальные функции (по умолчанию выключены).
+# Включать только для отладки конкретных установок (например, steam + aroma).
+CONF_EXPERIMENTAL_AROMA = "experimental_aroma"
+
 # Legacy / fallback control port candidate.
 # Important: the controller's effective control/telemetry UDP port is dynamic and may change after reboot.
 # We keep a historical/observed port here only as a last-resort probe candidate.

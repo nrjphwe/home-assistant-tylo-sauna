@@ -34,7 +34,8 @@
           "host": "Хост / IP‑адрес",
           "port": "UDP‑порт",
           "name": "Имя",
-          "allow_telemetry_from_other_ips": "Разрешить телеметрию с других IP‑адресов (рекомендуется)"
+          "allow_telemetry_from_other_ips": "Разрешить телеметрию с других IP‑адресов (рекомендуется)",
+          "experimental_aroma": "Экспериментально: управление ароматизацией пара (тест Eucalyptus)"
         }
       }
     }

@@ -71,7 +71,7 @@ class TyloSaunaOnlineBinarySensor(BinarySensorEntity):
         pinned = getattr(self._controller, "telemetry_host", None)
         last_ip = getattr(self._controller, "last_rx_ip", None)
 
-        return {
+        attrs = {
             # Config / options
             "relaxed_telemetry": bool(getattr(self._controller, "relaxed_telemetry", False)),
             "guid": getattr(self._controller, "guid", None),
@@ -95,6 +95,19 @@ class TyloSaunaOnlineBinarySensor(BinarySensorEntity):
             "rx_packets": getattr(self._controller, "rx_packets", 0),
             "tx_packets": getattr(self._controller, "tx_packets", 0),
         }
+
+        # Экспериментальная диагностика steam/aroma (показываем только если включено).
+        if bool(getattr(self._controller, "experimental_aroma", False)):
+            attrs.update(
+                {
+                    "experimental_aroma": True,
+                    "last_aroma_name": getattr(self._controller, "last_aroma_name", None),
+                    "last_aroma_flag": getattr(self._controller, "last_aroma_flag", None),
+                    "last_aroma_seen": getattr(self._controller, "last_aroma_dt", None),
+                }
+            )
+
+        return attrs
 
     async def async_added_to_hass(self) -> None:
         self._controller.register_callback(self.async_write_ha_state)

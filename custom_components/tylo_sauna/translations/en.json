@@ -34,7 +34,8 @@
           "host": "Host / IP address",
           "port": "UDP port",
           "name": "Name",
-          "allow_telemetry_from_other_ips": "Allow telemetry from other IPs (recommended)"
+          "allow_telemetry_from_other_ips": "Allow telemetry from other IPs (recommended)",
+          "experimental_aroma": "Experimental: enable steam aroma controls (Eucalyptus test)"
         }
       }
     }
