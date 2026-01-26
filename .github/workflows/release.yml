@@ -25,10 +25,22 @@ jobs:
           cd custom_components/tylo_sauna
           zip -r "../../dist/tylo_sauna.zip" . -x "*.pyc" -x "__pycache__/*"
 
+      - name: Extract release notes from CHANGELOG
+        id: changelog
+        run: |
+          # Extract section for current version from CHANGELOG.md
+          # Finds content between ## [vX.Y.Z] and next ## [
+          VERSION="${GITHUB_REF_NAME#v}"
+          NOTES=$(awk "/^## \\[$VERSION\\]/{flag=1; next} /^## \\[/{flag=0} flag" CHANGELOG.md)
+          # Handle multi-line output for GitHub Actions
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/tylo_sauna.zip
-          generate_release_notes: true
+          body: ${{ steps.changelog.outputs.notes }}
 
 
