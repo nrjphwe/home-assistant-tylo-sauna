@@ -34,7 +34,6 @@ async def async_setup_entry(
 
 class TyloSaunaClimate(ClimateEntity):
     _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
-    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT_COOL, HVACMode.HEAT]  # OFF, Standby, Heat
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_min_temp = 40.0
     _attr_max_temp = 110.0
@@ -59,6 +58,13 @@ class TyloSaunaClimate(ClimateEntity):
 
     async def async_added_to_hass(self) -> None:
         self._controller.register_callback(self.async_write_ha_state)
+
+    @property
+    def hvac_modes(self) -> list[HVACMode]:
+        """Return available HVAC modes based on standby availability."""
+        if getattr(self._controller, "standby_enabled", False):
+            return [HVACMode.OFF, HVACMode.HEAT_COOL, HVACMode.HEAT]  # OFF, Standby, Heat
+        return [HVACMode.OFF, HVACMode.HEAT]  # No standby available
 
     @property
     def hvac_mode(self) -> HVACMode | None:
