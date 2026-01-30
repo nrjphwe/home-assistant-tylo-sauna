@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 
 from homeassistant.components.sensor import (
     SensorEntity,
@@ -29,6 +30,7 @@ async def async_setup_entry(
             TyloSaunaTimeToOff(controller),
             TyloSaunaFaultCode(controller),
             TyloSaunaFaultMessage(controller),
+            TyloSaunaPrograms(controller),
         ]
     )
     _LOGGER.info("Tylo Sauna sensors added")
@@ -118,3 +120,76 @@ class TyloSaunaFaultMessage(_BaseTyloSensor):
     def native_value(self) -> str | None:
         fault = getattr(self._controller, "last_fault", None)
         return str(fault.message) if fault and fault.message else None
+
+
+class TyloSaunaPrograms(_BaseTyloSensor):
+    """Schedule / programs from the Tylo calendar."""
+
+    _MODE_NAMES = {0: "Bath", 1: "Standby"}
+
+    def __init__(self, controller) -> None:
+        super().__init__(controller)
+        self._attr_name = f"{controller.name} programs"
+        self._attr_unique_id = f"tylo_sauna_{self._device_id}_programs"
+        self._attr_icon = "mdi:calendar-clock"
+
+    @property
+    def available(self) -> bool:
+        return bool(self._controller.is_online())
+
+    @property
+    def native_value(self) -> str | None:
+        entries = getattr(self._controller, "schedule", [])
+        if not entries:
+            return "No programs"
+        lines = []
+        for e in entries:
+            line = self._format_entry(e)
+            if line:
+                lines.append(line)
+        return " | ".join(lines) if lines else "No programs"
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        entries = getattr(self._controller, "schedule", [])
+        return {
+            "program_count": len(entries),
+            "programs": [self._entry_to_dict(e) for e in entries],
+        }
+
+    def _format_entry(self, entry) -> str | None:
+        if not entry.enabled or entry.ready_at_utc is None:
+            return None
+        start_dt = datetime.fromtimestamp(entry.ready_at_utc, tz=timezone.utc)
+        start_str = start_dt.strftime("%H:%M")
+        if entry.stop_after_min:
+            from datetime import timedelta
+            end_dt = start_dt + timedelta(minutes=entry.stop_after_min)
+            end_str = end_dt.strftime("%H:%M")
+        else:
+            end_str = "?"
+        mode = self._MODE_NAMES.get(entry.mode, f"mode{entry.mode}")
+        if entry.favorite_index is not None:
+            favs = getattr(self._controller, "favorites", {})
+            fav = favs.get(entry.favorite_index)
+            settings = fav.name if fav and fav.name else f"FAV#{entry.favorite_index}"
+        elif entry.temp_c is not None:
+            settings = f"{entry.temp_c:.0f}°C"
+        else:
+            settings = ""
+        return f"{start_str}\u2013{end_str} {mode} {settings}".strip()
+
+    def _entry_to_dict(self, entry) -> dict:
+        d = {
+            "slot": entry.slot,
+            "ready_at_utc": entry.ready_at_utc,
+            "stop_after_min": entry.stop_after_min,
+            "mode": self._MODE_NAMES.get(entry.mode, entry.mode),
+        }
+        if entry.favorite_index is not None:
+            favs = getattr(self._controller, "favorites", {})
+            fav = favs.get(entry.favorite_index)
+            d["favorite"] = fav.name if fav and fav.name else f"FAV#{entry.favorite_index}"
+        if entry.temp_c is not None:
+            d["temp_c"] = entry.temp_c
+        return d

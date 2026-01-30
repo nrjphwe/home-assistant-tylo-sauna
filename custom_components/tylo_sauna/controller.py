@@ -151,6 +151,22 @@ class Favorite:
     light_on: bool | None = None
 
 
+# Schedule / Programs (calendar tab in the official app)
+SCHEDULE_SLOT_FIELD = 2045  # ea 7f
+Y2K_EPOCH_OFFSET = 946684800  # seconds from Unix epoch to 2000-01-01 00:00:00 UTC
+
+
+@dataclass(frozen=True)
+class ScheduleEntry:
+    slot: int
+    enabled: bool
+    ready_at_utc: float | None = None  # Unix timestamp (seconds)
+    stop_after_min: int | None = None
+    temp_c: float | None = None
+    mode: int = 0  # 0=Bath, 1=Standby
+    favorite_index: int | None = None  # None=Custom, int=Favorite slot
+
+
 @dataclass(frozen=True)
 class FaultEvent:
     code: int
@@ -340,6 +356,59 @@ def parse_fault_event(payload: bytes) -> FaultEvent | None:
     )
 
 
+def parse_schedule_slots(payload: bytes) -> list[ScheduleEntry]:
+    """Parse schedule/programs from telemetry (field 2045 repeated sub-messages).
+
+    Field 2045 is nested inside the da7d envelope (field 2011), so we
+    check both the top level and one level down.
+    """
+    top = _pb_collect(payload)
+    entries: list[ScheduleEntry] = []
+
+    # Field 2045 may be at top level or nested inside field 2011 (da7d envelope)
+    slot_items = top.get(SCHEDULE_SLOT_FIELD, [])
+    if not slot_items:
+        for wt_outer, body in top.get(2011, []):
+            if wt_outer != 2:
+                continue
+            inner = _pb_collect(body)
+            slot_items = inner.get(SCHEDULE_SLOT_FIELD, [])
+            if slot_items:
+                break
+
+    for wt, raw in slot_items:
+        if wt != 2:
+            continue
+        msg = _pb_collect(raw)
+        slot = _pb_first_varint(msg, 1)
+        enabled = _pb_first_varint(msg, 2)
+        if slot is None:
+            continue
+        if enabled != 1:
+            continue
+
+        ts_raw = _pb_first_varint(msg, 3)  # seconds from Y2K epoch ×1000
+        ready_at = (float(ts_raw) / 1000.0 + Y2K_EPOCH_OFFSET) if ts_raw else None
+        stop_min = _pb_first_varint(msg, 4)
+        temp_raw = _pb_first_varint(msg, 6)  # °C × TEMP_SCALE
+        temp_c = (float(temp_raw) / TEMP_SCALE) if temp_raw is not None else None
+        mode = _pb_first_varint(msg, 9) or 0
+        fav_idx = _pb_first_varint(msg, 10)  # present only for Favorite entries
+
+        entries.append(ScheduleEntry(
+            slot=int(slot),
+            enabled=True,
+            ready_at_utc=ready_at,
+            stop_after_min=int(stop_min) if stop_min is not None else None,
+            temp_c=temp_c,
+            mode=mode,
+            favorite_index=fav_idx,
+        ))
+
+    entries.sort(key=lambda e: e.ready_at_utc or 0)
+    return entries
+
+
 def _pb_encode_key(field_no: int, wire_type: int) -> bytes:
     return _encode_varint((int(field_no) << 3) | int(wire_type))
 
@@ -372,6 +441,10 @@ def _looks_like_tylo_telemetry(data: bytes) -> bool:
     if data.startswith(b"\xc2\x7f"):  # favorites snapshot (field 2040)
         return True
     if data.startswith(b"\xf2\x83\x01"):  # fault event (field 2110)
+        return True
+    if data.startswith(b"\xea\x7f"):  # schedule slot (field 2045)
+        return True
+    if data.startswith(b"\xf2\x7e"):  # schedule notification (field 2030)
         return True
 
     # Known telemetry families (KV status + flags)
@@ -492,6 +565,9 @@ class SaunaController:
         # Favorites / presets
         self.favorites: dict[int, Favorite] = {}
         self.last_selected_favorite_slot: int | None = None
+
+        # Schedule / programs
+        self.schedule: list[ScheduleEntry] = []
 
         # Diagnostics
         self.rx_packets = 0
@@ -993,6 +1069,16 @@ class SaunaController:
                         _LOGGER.info("Tylo Sauna standby_enabled: %s", sb_val)
                         changed = True
                     break
+
+            # Schedule / programs (field 2045 sub-messages inside da7d packets)
+            try:
+                sched = parse_schedule_slots(data)
+                if sched != self.schedule:
+                    self.schedule = sched
+                    _LOGGER.info("Tylo Sauna: schedule updated (%d programs)", len(sched))
+                    changed = True
+            except Exception:  # noqa: BLE001
+                pass
 
         # Status KV (temps, timers, etc.)
         if data.startswith(b"\xd2\x7d"):
