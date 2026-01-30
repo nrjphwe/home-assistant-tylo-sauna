@@ -207,22 +207,6 @@ logger:
 
 Restart HA and reproduce the issue.
 
-### Packet capture (recommended)
-
-Short capture helps confirm whether the controller replies and which port it uses.
-
-**Best (capture on HA host):**
-
-```bash
-sudo tcpdump -i any -nn -s0 -w tylo_capture.pcapng 'udp and host <SAUNA_IP>'
-```
-
-Note: do **not** rely on any fixed UDP port for control/telemetry. The effective port can change between sessions.
-If you capture in Wireshark, filtering by IP is the safest starting point (e.g. `ip.addr == <SAUNA_IP> && udp`).
-If you capture on a desktop (Mac/PC), make sure that machine is an endpoint of the UDP session — the easiest way is to open the official Tylo app there and confirm it discovers the controller before starting the capture.
-
-Attach the `.pcapng` to the GitHub issue.
-
 ---
 
 ## Standby mode

@@ -34,4 +34,12 @@ dist/
 /dumps/
 
 
+# Internal dev docs (not for public GitHub)
 REFACTORING.md
+spec.md
+docs/plans/
+docs/PROTOCOL.MD
+docs/TEST_CAPTURE_GUIDE.md
+docs/INTEGRATION_SPEC.md
+docs/HACS_PUBLISH.md
+/tmp/
