@@ -4,41 +4,39 @@
     "step": {
       "user": {
         "title": "Tylo Sauna",
-        "description": "Selecciona tu controlador Tylo Elite descubierto en la red o añádelo manualmente.",
+        "description": "Selecciona tu controlador Tylo Elite descubierto en la red o anadelo manualmente.",
         "data": {
           "device": "Dispositivo"
         }
       },
       "confirm": {
         "title": "Configurar Tylo Sauna",
-        "description": "Si activas «Permitir telemetría desde otras IP», Home Assistant aceptará la telemetría incluso si proviene de una IP diferente a la que configuraste. Esto es útil para configuraciones multinodo (sauna + vapor) y firmwares que envían telemetría desde otra dirección.",
+        "description": "Introduce los datos de conexion de tu controlador Tylo Elite.",
         "data": {
-          "host": "Host / dirección IP",
+          "host": "Host / direccion IP",
           "port": "Puerto UDP",
-          "name": "Nombre",
-          "allow_telemetry_from_other_ips": "Permitir telemetría desde otras IP (recomendado)"
+          "name": "Nombre"
         }
       }
     },
     "error": {
-      "device_not_found": "El dispositivo seleccionado ya no está disponible. Inténtalo de nuevo.",
-      "invalid_host": "Introduce una dirección IP o un nombre de host válido.",
-      "invalid_port": "Introduce un puerto UDP válido (1–65535)."
+      "device_not_found": "El dispositivo seleccionado ya no esta disponible. Intentalo de nuevo.",
+      "invalid_host": "Introduce una direccion IP o un nombre de host valido.",
+      "invalid_port": "Introduce un puerto UDP valido (1-65535)."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Opciones de Tylo Sauna",
-        "description": "Cambiar la configuración de conexión. Usa «Permitir telemetría desde otras IP» si la telemetría se envía desde otro nodo/IP (común en sistemas sauna + vapor).",
+        "description": "Cambia los ajustes de conexion de tu Tylo Sauna.",
         "data": {
-          "host": "Host / dirección IP",
-          "port": "Puerto UDP",
+          "host": "Host / direccion IP",
           "name": "Nombre",
-          "allow_telemetry_from_other_ips": "Permitir telemetría desde otras IP (recomendado)"
+          "experimental_aroma": "Experimental: activar controles de aroma de vapor (prueba Eucalyptus)",
+          "debug_recording": "Grabacion de depuracion (captura trafico UDP)"
         }
       }
     }
   }
 }
-

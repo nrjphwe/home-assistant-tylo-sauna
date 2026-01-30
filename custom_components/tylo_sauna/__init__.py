@@ -6,11 +6,11 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import HomeAssistant
 
 from .const import (
+    CONF_DEBUG_RECORDING,
     CONF_GUID,
     CONF_HOST,
     CONF_NAME,
     CONF_PORT,
-    CONF_RELAXED_TELEMETRY,
     CONF_EXPERIMENTAL_AROMA,
     DOMAIN,
     DEFAULT_CONTROL_PORT,
@@ -53,8 +53,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     name = cfg.get(CONF_NAME, "Tylo Sauna")
 
     guid = cfg.get(CONF_GUID)  # may exist for discovery-based setup
-    relaxed = bool(cfg.get(CONF_RELAXED_TELEMETRY, True))
     experimental_aroma = bool(cfg.get(CONF_EXPERIMENTAL_AROMA, False))
+    debug_recording = bool(cfg.get(CONF_DEBUG_RECORDING, False))
 
     controller = SaunaController(
         hass=hass,
@@ -62,8 +62,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         port=port,
         name=name,
         guid=guid,
-        relaxed_telemetry=relaxed,
         experimental_aroma=experimental_aroma,
+        debug_recording=debug_recording,
     )
 
     # Stable id for device/entities (do NOT use host here, because host can change via OptionsFlow)

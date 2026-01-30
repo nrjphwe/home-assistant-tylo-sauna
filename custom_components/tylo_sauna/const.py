@@ -12,6 +12,7 @@ CONF_RELAXED_TELEMETRY = "relaxed_telemetry"
 # Экспериментальные функции (по умолчанию выключены).
 # Включать только для отладки конкретных установок (например, steam + aroma).
 CONF_EXPERIMENTAL_AROMA = "experimental_aroma"
+CONF_DEBUG_RECORDING = "debug_recording"
 
 # Legacy / fallback control port candidate.
 # Important: the controller's effective control/telemetry UDP port is dynamic and may change after reboot.

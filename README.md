@@ -169,7 +169,16 @@ Alternative (advanced): manually clean up old entities in the entity registry in
 
 ## Troubleshooting
 
-### “Discovered but no data / all entities N/A”
+If the integration discovers your sauna but entities show no data or incorrect state:
+
+1. **Enable debug recording:** Settings → Integrations → Tylo Sauna → Configure → check "Debug recording"
+2. **Reproduce the issue** — wait for the problem to occur (e.g., standby transition, connection loss)
+3. **Download diagnostics:** Settings → Integrations → Tylo Sauna → "..." → Download Diagnostics
+4. **Attach the JSON** to your [GitHub issue](https://github.com/skyer/home-assistant-tylo-sauna/issues)
+
+The diagnostics file includes configuration, controller state, and a buffer of the last ~2000 UDP packets (about 1.5-2 hours of traffic). IP addresses in the packet buffer are NOT redacted (needed for network debugging); top-level config fields are redacted.
+
+### "Discovered but no data / all entities N/A"
 
 Most common causes:
 

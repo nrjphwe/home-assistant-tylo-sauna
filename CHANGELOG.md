@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.0] - 2026-01-30
+
+### Added
+
+* **Debug recording mode** — toggle in integration options captures all UDP traffic (TX, RX, filtered RX) into a 2000-packet ring buffer for remote troubleshooting.
+* **Download Diagnostics** — standard Home Assistant diagnostics platform. One-click download of full diagnostic JSON (config, controller state, captured packets) via Settings → Integrations → Tylo Sauna → "⋮" → Download Diagnostics.
+
+### Changed
+
+* **Simplified options:** removed "Allow telemetry from other IPs" toggle — smart telemetry acceptance is now always active. Removed UDP port from options (auto-discovered).
+* **Telemetry host auto-recovery:** pinned telemetry host is now reset when the controller goes offline, allowing automatic re-learning on reconnect (fixes stuck connections after DHCP changes).
+
+### Fixed
+
+* **Memory leak on reload:** entity callbacks are now properly unregistered when entities are removed (`async_will_remove_from_hass`), preventing duplicate state updates after integration reload.
+
 ## [0.3.8] - 2026-01-27
 
 ### Fixed

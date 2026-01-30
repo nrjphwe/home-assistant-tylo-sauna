@@ -11,12 +11,11 @@
       },
       "confirm": {
         "title": "Configure Tylo Sauna",
-        "description": "If you enable “Allow telemetry from other IPs”, Home Assistant will accept telemetry even if it comes from a different IP than the one you configured. This is useful for multi-node setups (sauna + steam) and firmwares that send telemetry from another address.",
+        "description": "Enter connection details for your Tylo Elite controller.",
         "data": {
           "host": "Host / IP address",
           "port": "UDP port",
-          "name": "Name",
-          "allow_telemetry_from_other_ips": "Allow telemetry from other IPs (recommended)"
+          "name": "Name"
         }
       }
     },
@@ -29,17 +28,14 @@
     "step": {
       "init": {
         "title": "Tylo Sauna options",
-        "description": "Change connection settings. Use “Allow telemetry from other IPs” if telemetry is sent from another node/IP (common for sauna + steam systems).",
+        "description": "Change connection settings for your Tylo Sauna.",
         "data": {
           "host": "Host / IP address",
-          "port": "UDP port",
           "name": "Name",
-          "allow_telemetry_from_other_ips": "Allow telemetry from other IPs (recommended)",
-          "experimental_aroma": "Experimental: enable steam aroma controls (Eucalyptus test)"
+          "experimental_aroma": "Experimental: enable steam aroma controls (Eucalyptus test)",
+          "debug_recording": "Debug recording (captures UDP traffic for troubleshooting)"
         }
       }
     }
   }
 }
-
-

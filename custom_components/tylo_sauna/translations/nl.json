@@ -11,34 +11,32 @@
       },
       "confirm": {
         "title": "Tylo Sauna configureren",
-        "description": "Als je \"Telemetrie van andere IP-adressen toestaan\" inschakelt, accepteert Home Assistant telemetrie, zelfs als deze van een ander IP-adres komt dan het adres dat je hebt ingesteld. Dit is handig voor multi-node-opstellingen (sauna + stoom) en firmwares die telemetrie vanaf een ander adres verzenden.",
+        "description": "Voer de verbindingsgegevens in voor je Tylo Elite-controller.",
         "data": {
           "host": "Host / IP-adres",
           "port": "UDP-poort",
-          "name": "Naam",
-          "allow_telemetry_from_other_ips": "Telemetrie van andere IP-adressen toestaan (aanbevolen)"
+          "name": "Naam"
         }
       }
     },
     "error": {
       "device_not_found": "Het geselecteerde apparaat is niet meer beschikbaar. Probeer het opnieuw.",
       "invalid_host": "Voer een geldig IP-adres of hostnaam in.",
-      "invalid_port": "Voer een geldige UDP-poort in (1–65535)."
+      "invalid_port": "Voer een geldige UDP-poort in (1-65535)."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Tylo Sauna-opties",
-        "description": "Verbindingsinstellingen wijzigen. Gebruik \"Telemetrie van andere IP-adressen toestaan\" als telemetrie vanaf een andere node/IP wordt verzonden (gebruikelijk bij sauna + stoom-systemen).",
+        "description": "Wijzig verbindingsinstellingen voor je Tylo Sauna.",
         "data": {
           "host": "Host / IP-adres",
-          "port": "UDP-poort",
           "name": "Naam",
-          "allow_telemetry_from_other_ips": "Telemetrie van andere IP-adressen toestaan (aanbevolen)"
+          "experimental_aroma": "Experimenteel: stoom-aromabesturing inschakelen (Eucalyptus-test)",
+          "debug_recording": "Debug-opname (legt UDP-verkeer vast voor probleemoplossing)"
         }
       }
     }
   }
 }
-

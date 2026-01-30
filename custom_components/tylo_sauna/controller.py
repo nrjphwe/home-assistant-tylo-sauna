@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import re
+from collections import deque
 from dataclasses import dataclass
 from typing import Any
 import time
@@ -365,9 +366,9 @@ def encode_fault_ack(fault: FaultEvent) -> bytes:
 
 def _looks_like_tylo_telemetry(data: bytes) -> bool:
     """
-    Heuristic check to avoid accepting random UDP noise when relaxed mode is enabled.
+    Heuristic check to avoid accepting random UDP noise as telemetry.
     """
-    # Allow known non-telemetry packets that we still want to accept in relaxed mode
+    # Allow known non-telemetry packets that we still want to accept
     if data.startswith(b"\xc2\x7f"):  # favorites snapshot (field 2040)
         return True
     if data.startswith(b"\xf2\x83\x01"):  # fault event (field 2110)
@@ -431,8 +432,8 @@ class SaunaController:
         host: str,
         port: int = 54377,
         guid: str | None = None,
-        relaxed_telemetry: bool = False,
         experimental_aroma: bool = False,
+        debug_recording: bool = False,
     ):
         self._hass = hass
         self.name = name
@@ -459,9 +460,10 @@ class SaunaController:
             self._probe_ports |= {DEFAULT_CONTROL_PORT, *UDP_DISCOVERY_PORTS}
 
         self.guid = guid
-        self.relaxed_telemetry = relaxed_telemetry
         # Экспериментальные функции включаются только явно через OptionsFlow.
         self.experimental_aroma = bool(experimental_aroma)
+        self.debug_recording = bool(debug_recording)
+        self._debug_buffer: deque[dict] = deque(maxlen=2000)
         self.endpoint_source: str = "config"
 
         self._transport: asyncio.DatagramTransport | None = None
@@ -642,6 +644,13 @@ class SaunaController:
             if online != self._online_cached:
                 self._online_cached = online
                 publish = True
+                # Unpin telemetry host when going offline — allows re-learning on reconnect
+                if not online and self.telemetry_host is not None:
+                    _LOGGER.info(
+                        "Tylo Sauna: unpinning telemetry_host=%s (offline)",
+                        self.telemetry_host,
+                    )
+                    self.telemetry_host = None
 
             # once per minute publish a "heartbeat" so online/offline can update on its own
             if (now_m - self._last_publish_monotonic) >= 60:
@@ -733,8 +742,22 @@ class SaunaController:
         dst_port = int(port) if port is not None else int(self.control_port)
         self._transport.sendto(payload, (self.host, dst_port))
         self.tx_packets += 1
+        self._debug_record("tx", (self.host, dst_port), payload, note=desc)
         if desc:
             _LOGGER.debug("Tylo Sauna: send %s (%d bytes) -> %s:%s", desc, len(payload), self.host, dst_port)
+
+    def _debug_record(self, direction: str, addr: tuple, data: bytes, note: str = "") -> None:
+        """Append a packet record to the debug ring buffer."""
+        if not self.debug_recording:
+            return
+        self._debug_buffer.append({
+            "ts": dt_util.utcnow().isoformat(),
+            "dir": direction,
+            "addr": f"{addr[0]}:{addr[1]}",
+            "len": len(data),
+            "hex": data.hex(),
+            "note": note,
+        })
 
     def _send_probe(self, payload: bytes, desc: str = "") -> None:
         """Send init packets to a small set of candidate ports when port is uncertain."""
@@ -795,46 +818,44 @@ class SaunaController:
                     pass
 
 
-        if not self.relaxed_telemetry:
-            # Strict mode: only accept telemetry from configured host
-            if src_ip != self.host:
+        # Smart telemetry filtering: accept from pinned host, or auto-learn from valid Tylo packets.
+        if self.telemetry_host is not None:
+            # Pinned — only accept from pinned host
+            if src_ip != self.telemetry_host:
+                _LOGGER.debug(
+                    "Tylo Sauna: ignoring telemetry from %s (pinned telemetry_host=%s)",
+                    src_ip, self.telemetry_host
+                )
+                self._debug_record("rx_filtered", addr, data, note=f"expected pinned {self.telemetry_host}")
                 return
         else:
-            # Relaxed mode: accept telemetry from pinned telemetry_host OR learn it
-            if self.telemetry_host is not None:
-                if src_ip != self.telemetry_host:
-                    _LOGGER.debug(
-                        "Tylo Sauna: ignoring telemetry from %s (pinned telemetry_host=%s)",
-                        src_ip, self.telemetry_host
-                    )
-                    return
+            # Not pinned — accept from configured host, or auto-learn from valid Tylo packets
+            if src_ip == self.host:
+                pass  # accept from configured host
             else:
-                if src_ip == self.host:
-                    # OK, accept packets from configured host
-                    pass
-                else:
-                    # Not from configured host
-                    if not _looks_like_tylo_telemetry(data):
-                        _LOGGER.debug(
-                            "Tylo Sauna: ignoring non-telemetry UDP packet from %s", src_ip
-                        )
-                        return
-
-                    pkt_guid = _extract_guid_from_payload(data)
-                    if self.guid and pkt_guid and pkt_guid != self.guid:
-                        _LOGGER.warning(
-                            "Tylo Sauna: telemetry GUID mismatch from %s: packet_guid=%s, entry_guid=%s. Ignoring.",
-                            src_ip, pkt_guid, self.guid
-                        )
-                        return
-
-                    # Accept & pin
-                    self.telemetry_host = src_ip
-                    _LOGGER.warning(
-                        "Tylo Sauna: telemetry received from %s (configured host=%s). "
-                        "Pinning telemetry_host=%s (guid_hint=%s).",
-                        src_ip, self.host, src_ip, pkt_guid or "n/a"
+                if not _looks_like_tylo_telemetry(data):
+                    _LOGGER.debug(
+                        "Tylo Sauna: ignoring non-telemetry UDP packet from %s", src_ip
                     )
+                    self._debug_record("rx_filtered", addr, data, note="not telemetry-like")
+                    return
+
+                pkt_guid = _extract_guid_from_payload(data)
+                if self.guid and pkt_guid and pkt_guid != self.guid:
+                    _LOGGER.warning(
+                        "Tylo Sauna: telemetry GUID mismatch from %s: packet_guid=%s, entry_guid=%s. Ignoring.",
+                        src_ip, pkt_guid, self.guid
+                    )
+                    self._debug_record("rx_filtered", addr, data, note=f"guid mismatch: pkt={pkt_guid} entry={self.guid}")
+                    return
+
+                # Accept & pin
+                self.telemetry_host = src_ip
+                _LOGGER.warning(
+                    "Tylo Sauna: telemetry received from %s (configured host=%s). "
+                    "Pinning telemetry_host=%s (guid_hint=%s).",
+                    src_ip, self.host, src_ip, pkt_guid or "n/a"
+                )
 
         # Learn actual control port from incoming Tylo packets (helps Docker users who kept discovery port).
         self._maybe_learn_control_port(src_port, data)
@@ -845,7 +866,7 @@ class SaunaController:
         self.rx_packets += 1
         self.last_rx_monotonic = time.monotonic()
         self.last_rx_dt = dt_util.utcnow()
-
+        self._debug_record("rx", addr, data)
 
         # --- Fault events (door cancel etc.) ---
         if data.startswith(b"\xf2\x83\x01") or b"\xf2\x83\x01" in data:
@@ -1075,6 +1096,12 @@ class SaunaController:
 
     def register_callback(self, cb) -> None:
         self._callbacks.append(cb)
+
+    def unregister_callback(self, cb) -> None:
+        try:
+            self._callbacks.remove(cb)
+        except ValueError:
+            pass
 
     def _notify_listeners(self) -> None:
         for cb in list(self._callbacks):

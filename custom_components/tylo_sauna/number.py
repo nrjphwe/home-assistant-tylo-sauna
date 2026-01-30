@@ -50,6 +50,9 @@ class TyloSaunaStopTime(NumberEntity):
     async def async_added_to_hass(self) -> None:
         self._controller.register_callback(self.async_write_ha_state)
 
+    async def async_will_remove_from_hass(self) -> None:
+        self._controller.unregister_callback(self.async_write_ha_state)
+
     @property
     def native_value(self) -> int | None:
         if self._controller.stop_cfg_min is None:

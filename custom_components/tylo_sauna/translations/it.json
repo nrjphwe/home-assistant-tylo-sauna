@@ -11,34 +11,32 @@
       },
       "confirm": {
         "title": "Configura Tylo Sauna",
-        "description": "Se abiliti «Consenti telemetria da altri IP», Home Assistant accetterà la telemetria anche se proviene da un indirizzo IP diverso da quello configurato. È utile per configurazioni multi‑nodo (sauna + vapore) e firmware che inviano telemetria da un altro indirizzo.",
+        "description": "Inserisci i dettagli di connessione del tuo controller Tylo Elite.",
         "data": {
           "host": "Host / indirizzo IP",
           "port": "Porta UDP",
-          "name": "Nome",
-          "allow_telemetry_from_other_ips": "Consenti telemetria da altri IP (consigliato)"
+          "name": "Nome"
         }
       }
     },
     "error": {
-      "device_not_found": "Il dispositivo selezionato non è più disponibile. Riprova.",
+      "device_not_found": "Il dispositivo selezionato non e piu disponibile. Riprova.",
       "invalid_host": "Inserisci un indirizzo IP o un hostname valido.",
-      "invalid_port": "Inserisci una porta UDP valida (1–65535)."
+      "invalid_port": "Inserisci una porta UDP valida (1-65535)."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Opzioni Tylo Sauna",
-        "description": "Modifica le impostazioni di connessione. Usa «Consenti telemetria da altri IP» se la telemetria viene inviata da un altro nodo/IP (comune nei sistemi sauna + vapore).",
+        "description": "Modifica le impostazioni di connessione della tua Tylo Sauna.",
         "data": {
           "host": "Host / indirizzo IP",
-          "port": "Porta UDP",
           "name": "Nome",
-          "allow_telemetry_from_other_ips": "Consenti telemetria da altri IP (consigliato)"
+          "experimental_aroma": "Sperimentale: attiva i comandi aroma vapore (test Eucalyptus)",
+          "debug_recording": "Registrazione di debug (cattura il traffico UDP)"
         }
       }
     }
   }
 }
-

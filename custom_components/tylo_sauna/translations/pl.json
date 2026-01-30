@@ -4,41 +4,39 @@
     "step": {
       "user": {
         "title": "Tylo Sauna",
-        "description": "Wybierz kontroler Tylo Elite wykryty w sieci lub dodaj go ręcznie.",
+        "description": "Wybierz kontroler Tylo Elite wykryty w sieci lub dodaj go recznie.",
         "data": {
-          "device": "Urządzenie"
+          "device": "Urzadzenie"
         }
       },
       "confirm": {
         "title": "Skonfiguruj Tylo Sauna",
-        "description": "Jeśli włączysz „Zezwalaj na telemetrię z innych adresów IP”, Home Assistant zaakceptuje telemetrię nawet wtedy, gdy pochodzi z innego adresu IP niż ten skonfigurowany. Jest to przydatne w konfiguracjach wielowęzłowych (sauna + para) oraz w firmware, które wysyłają telemetrię z innego adresu.",
+        "description": "Wprowadz dane polaczenia kontrolera Tylo Elite.",
         "data": {
           "host": "Host / adres IP",
           "port": "Port UDP",
-          "name": "Nazwa",
-          "allow_telemetry_from_other_ips": "Zezwalaj na telemetrię z innych adresów IP (zalecane)"
+          "name": "Nazwa"
         }
       }
     },
     "error": {
-      "device_not_found": "Wybrane urządzenie nie jest już dostępne. Spróbuj ponownie.",
-      "invalid_host": "Wprowadź prawidłowy adres IP lub nazwę hosta.",
-      "invalid_port": "Wprowadź prawidłowy port UDP (1–65535)."
+      "device_not_found": "Wybrane urzadzenie nie jest juz dostepne. Sprobuj ponownie.",
+      "invalid_host": "Wprowadz prawidlowy adres IP lub nazwe hosta.",
+      "invalid_port": "Wprowadz prawidlowy port UDP (1-65535)."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Opcje Tylo Sauna",
-        "description": "Zmień ustawienia połączenia. Użyj „Zezwalaj na telemetrię z innych adresów IP”, jeśli telemetria jest wysyłana z innego węzła/IP (częste w systemach sauna + para).",
+        "description": "Zmien ustawienia polaczenia Tylo Sauna.",
         "data": {
           "host": "Host / adres IP",
-          "port": "Port UDP",
           "name": "Nazwa",
-          "allow_telemetry_from_other_ips": "Zezwalaj na telemetrię z innych adresów IP (zalecane)"
+          "experimental_aroma": "Eksperymentalne: wlacz sterowanie aromatem pary (test Eucalyptus)",
+          "debug_recording": "Nagrywanie debugowania (przechwytuje ruch UDP)"
         }
       }
     }
   }
 }
-

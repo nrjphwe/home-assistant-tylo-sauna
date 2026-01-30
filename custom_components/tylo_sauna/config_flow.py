@@ -9,6 +9,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant, callback
 
+from .const import CONF_DEBUG_RECORDING
 from .storage import EndpointStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -25,8 +26,6 @@ UUID_RE = re.compile(
 # Fallback port shown in UI when discovery has no data.
 # Note: the controller picks a dynamic control/telemetry UDP port and it may change after reboot.
 # UI field name (user-friendly) -> stored key in entry (backward compatible)
-UI_RELAXED_KEY = "allow_telemetry_from_other_ips"
-STORED_RELAXED_KEY = "relaxed_telemetry"
 EXPERIMENTAL_AROMA_KEY = "experimental_aroma"
 
 
@@ -281,10 +280,6 @@ class TyloSaunaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """
         errors: dict[str, str] = {}
 
-        # Defaults
-        relaxed_default = True
-        # existing (if re-run flow) can be pulled from previous entry options, but not necessary here
-
         if not self._manual:
             sauna = self._discovered.get(self._selected_guid or "")
             if not sauna:
@@ -293,7 +288,6 @@ class TyloSaunaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             default_name = sauna.name or f"Tylo Sauna {sauna.host}"
             if user_input is not None:
                 name = (user_input.get("name") or "").strip() or default_name
-                relaxed = bool(user_input.get(UI_RELAXED_KEY, relaxed_default))
 
                 await self.async_set_unique_id(sauna.guid)
                 self._abort_if_unique_id_configured()
@@ -303,14 +297,12 @@ class TyloSaunaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "port": int(sauna.port),               # IMPORTANT
                     "name": name,
                     "guid": sauna.guid,
-                    STORED_RELAXED_KEY: relaxed,
                 }
                 return self.async_create_entry(title=name, data=data)
 
             schema = vol.Schema(
                 {
                     vol.Optional("name", default=default_name): str,
-                    vol.Optional(UI_RELAXED_KEY, default=True): bool,
                 }
             )
 
@@ -349,7 +341,6 @@ class TyloSaunaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required("host", default=hinted_host): str,
                 port_field: int,
                 vol.Optional("name", default=hinted_name): str,
-                vol.Optional(UI_RELAXED_KEY, default=True): bool,
             }
         )
 
@@ -367,7 +358,6 @@ class TyloSaunaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     return self.async_show_form(step_id="confirm", data_schema=schema, errors=errors)
 
                 name = (user_input.get("name") or f"Tylo Sauna {host}").strip() or f"Tylo Sauna {host}"
-                relaxed = bool(user_input.get(UI_RELAXED_KEY, relaxed_default))
 
                 discovered_matches = [
                     s for s in (self._discovered.values() if self._discovered else [])
@@ -382,7 +372,6 @@ class TyloSaunaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "host": host,
                     "port": port,
                     "name": name,
-                    STORED_RELAXED_KEY: relaxed,
                 }
                 if matched_guid:
                     data["guid"] = matched_guid
@@ -404,45 +393,34 @@ class TyloSaunaOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         if user_input is not None:
             host = str(user_input["host"]).strip()
-            port = int(user_input["port"])
             name = str(user_input.get("name", "Tylo Sauna")).strip() or "Tylo Sauna"
-            relaxed = bool(user_input.get(UI_RELAXED_KEY, True))
             experimental_aroma = bool(user_input.get(EXPERIMENTAL_AROMA_KEY, False))
+            debug_recording = bool(user_input.get(CONF_DEBUG_RECORDING, False))
 
             # store in entry.options
             return self.async_create_entry(
                 title="",
                 data={
                     "host": host,
-                    "port": port,
                     "name": name,
-                    STORED_RELAXED_KEY: relaxed,
                     EXPERIMENTAL_AROMA_KEY: experimental_aroma,
+                    CONF_DEBUG_RECORDING: debug_recording,
                 },
             )
 
         current = {**self._entry.data, **self._entry.options}
-        port_default = int(current.get("port") or 0)
-        try:
-            domain_data = self.hass.data.get(DOMAIN, {})
-            ctrl = domain_data.get(self._entry.entry_id, {}).get("controller")
-            if ctrl and getattr(ctrl, "control_port", None):
-                port_default = int(ctrl.control_port)
-        except Exception:  # noqa: BLE001
-            pass
         schema = vol.Schema(
             {
                 vol.Required("host", default=current.get("host", "")): str,
-                vol.Required("port", default=port_default): int,
                 vol.Optional("name", default=current.get("name", "Tylo Sauna")): str,
-                vol.Optional(
-                    UI_RELAXED_KEY,
-                    default=bool(current.get(STORED_RELAXED_KEY, True)),
-                ): bool,
                 # Экспериментальная опция для steam/aroma устройств (по умолчанию выключена).
                 vol.Optional(
                     EXPERIMENTAL_AROMA_KEY,
                     default=bool(current.get(EXPERIMENTAL_AROMA_KEY, False)),
+                ): bool,
+                vol.Optional(
+                    CONF_DEBUG_RECORDING,
+                    default=bool(current.get(CONF_DEBUG_RECORDING, False)),
                 ): bool,
             }
         )

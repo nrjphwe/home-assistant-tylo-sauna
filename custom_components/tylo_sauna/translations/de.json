@@ -4,41 +4,39 @@
     "step": {
       "user": {
         "title": "Tylo Sauna",
-        "description": "Wähle deinen im Netzwerk gefundenen Tylo Elite Controller aus oder füge ihn manuell hinzu.",
+        "description": "Wahle deinen im Netzwerk gefundenen Tylo Elite Controller aus oder fuge ihn manuell hinzu.",
         "data": {
-          "device": "Gerät"
+          "device": "Gerat"
         }
       },
       "confirm": {
         "title": "Tylo Sauna konfigurieren",
-        "description": "Wenn du „Telemetrie von anderen IPs zulassen“ aktivierst, akzeptiert Home Assistant Telemetrie auch dann, wenn sie von einer anderen IP kommt als der, die du konfiguriert hast. Das ist nützlich für Multi-Node-Setups (Sauna + Dampf) und Firmwares, die Telemetrie von einer anderen Adresse senden.",
+        "description": "Gib die Verbindungsdaten fur deinen Tylo Elite Controller ein.",
         "data": {
           "host": "Host / IP-Adresse",
           "port": "UDP-Port",
-          "name": "Name",
-          "allow_telemetry_from_other_ips": "Telemetrie von anderen IPs zulassen (empfohlen)"
+          "name": "Name"
         }
       }
     },
     "error": {
-      "device_not_found": "Das ausgewählte Gerät ist nicht mehr verfügbar. Bitte versuche es erneut.",
-      "invalid_host": "Bitte gib eine gültige IP-Adresse oder einen Hostnamen ein.",
-      "invalid_port": "Bitte gib einen gültigen UDP-Port ein (1–65535)."
+      "device_not_found": "Das ausgewahlte Gerat ist nicht mehr verfugbar. Bitte versuche es erneut.",
+      "invalid_host": "Bitte gib eine gultige IP-Adresse oder einen Hostnamen ein.",
+      "invalid_port": "Bitte gib einen gultigen UDP-Port ein (1-65535)."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Tylo Sauna Optionen",
-        "description": "Verbindungseinstellungen ändern. Verwende „Telemetrie von anderen IPs zulassen“, wenn Telemetrie von einem anderen Knoten/IP gesendet wird (häufig bei Sauna + Dampf-Systemen).",
+        "description": "Verbindungseinstellungen fur deine Tylo Sauna andern.",
         "data": {
           "host": "Host / IP-Adresse",
-          "port": "UDP-Port",
           "name": "Name",
-          "allow_telemetry_from_other_ips": "Telemetrie von anderen IPs zulassen (empfohlen)"
+          "experimental_aroma": "Experimentell: Dampf-Aroma-Steuerung aktivieren (Eucalyptus-Test)",
+          "debug_recording": "Debug-Aufzeichnung (UDP-Verkehr zur Fehlersuche)"
         }
       }
     }
   }
 }
-

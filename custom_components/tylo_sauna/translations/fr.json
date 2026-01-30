@@ -4,41 +4,39 @@
     "step": {
       "user": {
         "title": "Tylo Sauna",
-        "description": "Sélectionnez votre contrôleur Tylo Elite détecté sur le réseau ou ajoutez-le manuellement.",
+        "description": "Selectionnez votre controleur Tylo Elite detecte sur le reseau ou ajoutez-le manuellement.",
         "data": {
           "device": "Appareil"
         }
       },
       "confirm": {
         "title": "Configurer Tylo Sauna",
-        "description": "Si vous activez « Autoriser la télémétrie depuis d’autres IP », Home Assistant acceptera la télémétrie même si elle provient d’une adresse IP différente de celle que vous avez configurée. Ceci est utile pour les installations multi‑nœuds (sauna + vapeur) et pour les firmwares qui envoient la télémétrie depuis une autre adresse.",
+        "description": "Saisissez les parametres de connexion de votre controleur Tylo Elite.",
         "data": {
-          "host": "Hôte / adresse IP",
+          "host": "Hote / adresse IP",
           "port": "Port UDP",
-          "name": "Nom",
-          "allow_telemetry_from_other_ips": "Autoriser la télémétrie depuis d’autres IP (recommandé)"
+          "name": "Nom"
         }
       }
     },
     "error": {
-      "device_not_found": "L’appareil sélectionné n’est plus disponible. Veuillez réessayer.",
-      "invalid_host": "Veuillez saisir une adresse IP ou un nom d’hôte valide.",
-      "invalid_port": "Veuillez saisir un port UDP valide (1–65535)."
+      "device_not_found": "L'appareil selectionne n'est plus disponible. Veuillez reessayer.",
+      "invalid_host": "Veuillez saisir une adresse IP ou un nom d'hote valide.",
+      "invalid_port": "Veuillez saisir un port UDP valide (1-65535)."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Options Tylo Sauna",
-        "description": "Modifier les paramètres de connexion. Utilisez « Autoriser la télémétrie depuis d’autres IP » si la télémétrie est envoyée depuis un autre nœud/IP (courant pour les systèmes sauna + vapeur).",
+        "description": "Modifier les parametres de connexion de votre Tylo Sauna.",
         "data": {
-          "host": "Hôte / adresse IP",
-          "port": "Port UDP",
+          "host": "Hote / adresse IP",
           "name": "Nom",
-          "allow_telemetry_from_other_ips": "Autoriser la télémétrie depuis d’autres IP (recommandé)"
+          "experimental_aroma": "Experimental : activer les commandes d'arome vapeur (test Eucalyptus)",
+          "debug_recording": "Enregistrement de debogage (capture du trafic UDP)"
         }
       }
     }
   }
 }
-

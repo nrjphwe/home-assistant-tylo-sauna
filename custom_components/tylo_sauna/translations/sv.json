@@ -4,41 +4,39 @@
     "step": {
       "user": {
         "title": "Tylo Sauna",
-        "description": "Välj din Tylo Elite-kontroller som har hittats i nätverket, eller lägg till den manuellt.",
+        "description": "Valj din Tylo Elite-kontroller som har hittats i natverket, eller lagg till den manuellt.",
         "data": {
           "device": "Enhet"
         }
       },
       "confirm": {
         "title": "Konfigurera Tylo Sauna",
-        "description": "Om du aktiverar ”Tillåt telemetri från andra IP-adresser” kommer Home Assistant att acceptera telemetri även om den kommer från en annan IP-adress än den du har konfigurerat. Detta är användbart för multi‑node‑installationer (bastu + ånga) och firmware som skickar telemetri från en annan adress.",
+        "description": "Ange anslutningsuppgifter for din Tylo Elite-kontroller.",
         "data": {
-          "host": "Värd / IP-adress",
+          "host": "Vard / IP-adress",
           "port": "UDP-port",
-          "name": "Namn",
-          "allow_telemetry_from_other_ips": "Tillåt telemetri från andra IP-adresser (rekommenderas)"
+          "name": "Namn"
         }
       }
     },
     "error": {
-      "device_not_found": "Den valda enheten är inte längre tillgänglig. Försök igen.",
-      "invalid_host": "Ange en giltig IP-adress eller ett värdnamn.",
-      "invalid_port": "Ange en giltig UDP-port (1–65535)."
+      "device_not_found": "Den valda enheten ar inte langre tillganglig. Forsok igen.",
+      "invalid_host": "Ange en giltig IP-adress eller ett vardnamn.",
+      "invalid_port": "Ange en giltig UDP-port (1-65535)."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Tylo Sauna-alternativ",
-        "description": "Ändra anslutningsinställningar. Använd ”Tillåt telemetri från andra IP-adresser” om telemetri skickas från en annan nod/IP (vanligt för bastu + ånga-system).",
+        "description": "Andra anslutningsinstellningar for din Tylo Sauna.",
         "data": {
-          "host": "Värd / IP-adress",
-          "port": "UDP-port",
+          "host": "Vard / IP-adress",
           "name": "Namn",
-          "allow_telemetry_from_other_ips": "Tillåt telemetri från andra IP-adresser (rekommenderas)"
+          "experimental_aroma": "Experimentell: aktivera arom-styrning for anga (Eucalyptus-test)",
+          "debug_recording": "Felsokning: spela in UDP-trafik"
         }
       }
     }
   }
 }
-

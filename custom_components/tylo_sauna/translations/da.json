@@ -4,41 +4,39 @@
     "step": {
       "user": {
         "title": "Tylo Sauna",
-        "description": "Vælg din Tylo Elite-controller, der er fundet på netværket, eller tilføj den manuelt.",
+        "description": "Valg din Tylo Elite-controller, der er fundet pa netvarket, eller tilfo den manuelt.",
         "data": {
           "device": "Enhed"
         }
       },
       "confirm": {
         "title": "Konfigurer Tylo Sauna",
-        "description": "Hvis du aktiverer \"Tillad telemetri fra andre IP-adresser\", vil Home Assistant acceptere telemetri, selv hvis den kommer fra en anden IP-adresse end den, du har konfigureret. Dette er nyttigt for multi-node-opsætninger (sauna + damp) og firmwares, der sender telemetri fra en anden adresse.",
+        "description": "Indtast forbindelsesoplysninger for din Tylo Elite-controller.",
         "data": {
-          "host": "Vært / IP-adresse",
+          "host": "Vart / IP-adresse",
           "port": "UDP-port",
-          "name": "Navn",
-          "allow_telemetry_from_other_ips": "Tillad telemetri fra andre IP-adresser (anbefalet)"
+          "name": "Navn"
         }
       }
     },
     "error": {
-      "device_not_found": "Den valgte enhed er ikke længere tilgængelig. Prøv igen.",
-      "invalid_host": "Indtast en gyldig IP-adresse eller et værtsnavn.",
-      "invalid_port": "Indtast en gyldig UDP-port (1–65535)."
+      "device_not_found": "Den valgte enhed er ikke langere tilgangelig. Prov igen.",
+      "invalid_host": "Indtast en gyldig IP-adresse eller et vartsnavn.",
+      "invalid_port": "Indtast en gyldig UDP-port (1-65535)."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Tylo Sauna-indstillinger",
-        "description": "Skift forbindelsesindstillinger. Brug \"Tillad telemetri fra andre IP-adresser\", hvis telemetri sendes fra en anden node/IP (almindeligt for sauna + damp-systemer).",
+        "description": "Skift forbindelsesindstillinger for din Tylo Sauna.",
         "data": {
-          "host": "Vært / IP-adresse",
-          "port": "UDP-port",
+          "host": "Vart / IP-adresse",
           "name": "Navn",
-          "allow_telemetry_from_other_ips": "Tillad telemetri fra andre IP-adresser (anbefalet)"
+          "experimental_aroma": "Eksperimentel: aktiver damp-aroma-styring (Eucalyptus-test)",
+          "debug_recording": "Fejlfindingsoptagelse (optager UDP-trafik)"
         }
       }
     }
   }
 }
-

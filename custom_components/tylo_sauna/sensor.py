@@ -51,6 +51,9 @@ class _BaseTyloSensor(SensorEntity):
     async def async_added_to_hass(self) -> None:
         self._controller.register_callback(self.async_write_ha_state)
 
+    async def async_will_remove_from_hass(self) -> None:
+        self._controller.unregister_callback(self.async_write_ha_state)
+
 
 class TyloSaunaTimeToOff(_BaseTyloSensor):
     """Remaining time until auto-off (minutes)."""

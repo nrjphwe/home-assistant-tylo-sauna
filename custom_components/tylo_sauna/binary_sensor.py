@@ -73,7 +73,6 @@ class TyloSaunaOnlineBinarySensor(BinarySensorEntity):
 
         attrs = {
             # Config / options
-            "relaxed_telemetry": bool(getattr(self._controller, "relaxed_telemetry", False)),
             "guid": getattr(self._controller, "guid", None),
             "endpoint_source": getattr(self._controller, "endpoint_source", None),
 
@@ -111,3 +110,6 @@ class TyloSaunaOnlineBinarySensor(BinarySensorEntity):
 
     async def async_added_to_hass(self) -> None:
         self._controller.register_callback(self.async_write_ha_state)
+
+    async def async_will_remove_from_hass(self) -> None:
+        self._controller.unregister_callback(self.async_write_ha_state)
