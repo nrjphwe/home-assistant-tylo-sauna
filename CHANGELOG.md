@@ -4,6 +4,7 @@
 
 ### Added
 
+* **Programs sensor** — `sensor.tylo_sauna_programs` displays scheduled programs from the Tylo calendar tab (e.g. `09:00–12:00 Bath 88°C | 15:00–18:00 Standby FAV111`). Supports both Custom (temperature) and Favorite entries. Structured data available in attributes (`program_count`, `programs` list).
 * **Debug recording mode** — toggle in integration options captures all UDP traffic (TX, RX, filtered RX) into a 2000-packet ring buffer for remote troubleshooting.
 * **Download Diagnostics** — standard Home Assistant diagnostics platform. One-click download of full diagnostic JSON (config, controller state, captured packets) via Settings → Integrations → Tylo Sauna → "⋮" → Download Diagnostics.
 

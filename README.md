@@ -51,6 +51,15 @@ For each configured controller the integration creates one device with:
     * light on/off
   * (Heating start remains a separate action via the climate entity, same as the official app UX.)
 
+### Schedule / programs (read-only)
+
+* **Sensor** – `sensor.tylo_sauna_programs`
+
+  * Displays scheduled programs from the Tylo calendar tab
+  * Format: `09:00–12:00 Bath 88°C | 15:00–18:00 Standby FAV111`
+  * Shows "No programs" when the schedule is empty
+  * Attributes: `program_count`, `programs` (structured list with slot, timestamps, mode, temperature or favorite name)
+
 ### Door safety / faults (diagnostics)
 
 * `sensor.tylo_sauna_fault_code` – last fault code (e.g. door cancellation)
@@ -274,6 +283,22 @@ This creates two button entities:
 * `button.tylo_sauna_aroma_eucalyptus_off`
 
 **Why experimental?** The aroma protocol was reverse-engineered from a single capture and has not been tested on real hardware. If you have a Steam controller with aroma pump, please test and report results in [GitHub Issues](https://github.com/skyer/home-assistant-tylo-sauna/issues).
+
+---
+
+## Helping improve this integration
+
+This integration is developed and tested on a single Tylo Elite controller. The author does not have access to other Tylo models (different Elite variants, Steam, Sense Pure, etc.), so **expanding support to other hardware depends on community contributions**.
+
+You don't need to write code — a diagnostic capture is enough to help reverse-engineer protocol differences. Here's how:
+
+1. **Enable debug recording:** Settings → Integrations → Tylo Sauna → Configure → check "Debug recording"
+2. **Use the feature** you'd like to see supported (e.g., change temperature, toggle a mode, set a schedule in the official Tylo app) — the integration will capture all UDP traffic in the background
+3. **Download diagnostics:** Settings → Integrations → Tylo Sauna → "⋮" → Download Diagnostics
+4. **Disable debug recording** (optional, but recommended — the buffer uses memory)
+5. **Open a [GitHub issue](https://github.com/skyer/home-assistant-tylo-sauna/issues)** describing what you did and attach the downloaded JSON file
+
+The diagnostics file contains a ring buffer of the last ~2000 UDP packets — enough to reverse-engineer new features and protocol variations.
 
 ---
 
