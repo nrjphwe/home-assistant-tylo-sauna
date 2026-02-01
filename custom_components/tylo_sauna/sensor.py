@@ -31,6 +31,8 @@ async def async_setup_entry(
             TyloSaunaFaultCode(controller),
             TyloSaunaFaultMessage(controller),
             TyloSaunaPrograms(controller),
+            TyloSaunaHumidity(controller),
+            TyloSaunaHumiditySetpoint(controller),
         ]
     )
     _LOGGER.info("Tylo Sauna sensors added")
@@ -193,3 +195,46 @@ class TyloSaunaPrograms(_BaseTyloSensor):
         if entry.temp_c is not None:
             d["temp_c"] = entry.temp_c
         return d
+
+
+class TyloSaunaHumidity(_BaseTyloSensor):
+    """Current humidity % (experimental, Combi/Steam setups)."""
+
+    _attr_device_class = SensorDeviceClass.HUMIDITY
+    _attr_native_unit_of_measurement = "%"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, controller) -> None:
+        super().__init__(controller)
+        self._attr_name = f"{controller.name} humidity"
+        self._attr_unique_id = f"tylo_sauna_{self._device_id}_humidity"
+
+    @property
+    def available(self) -> bool:
+        return bool(self._controller.is_online())
+
+    @property
+    def native_value(self) -> int | None:
+        return self._controller.humidity_cur_pct
+
+
+class TyloSaunaHumiditySetpoint(_BaseTyloSensor):
+    """Humidity setpoint % (experimental, Combi/Steam setups)."""
+
+    _attr_device_class = SensorDeviceClass.HUMIDITY
+    _attr_native_unit_of_measurement = "%"
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, controller) -> None:
+        super().__init__(controller)
+        self._attr_name = f"{controller.name} humidity setpoint"
+        self._attr_unique_id = f"tylo_sauna_{self._device_id}_humidity_setpoint"
+
+    @property
+    def available(self) -> bool:
+        return bool(self._controller.is_online())
+
+    @property
+    def native_value(self) -> int | None:
+        return self._controller.humidity_set_pct

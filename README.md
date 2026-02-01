@@ -60,6 +60,13 @@ For each configured controller the integration creates one device with:
   * Shows "No programs" when the schedule is empty
   * Attributes: `program_count`, `programs` (structured list with slot, timestamps, mode, temperature or favorite name)
 
+### Humidity (EXPERIMENTAL, Combi/Steam only)
+
+* `sensor.tylo_sauna_humidity` – current humidity %
+* `sensor.tylo_sauna_humidity_setpoint` – humidity setpoint %
+
+> ⚠️ **EXPERIMENTAL:** Both sensors are **disabled by default**. Enable them in entity settings if your sauna has humidity capability (Combi or Steam setups). Field mapping is based on a single Combi capture and may not be correct for all firmware versions. Please report your results in [issue #1](https://github.com/skyer/home-assistant-tylo-sauna/issues/1).
+
 ### Door safety / faults (diagnostics)
 
 * `sensor.tylo_sauna_fault_code` – last fault code (e.g. door cancellation)

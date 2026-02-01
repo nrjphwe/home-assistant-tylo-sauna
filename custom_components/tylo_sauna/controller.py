@@ -134,6 +134,8 @@ STATUS_KV_MAP: dict[int, tuple[str, callable]] = {
     0x0C: ("t_cur_c", lambda v: float(v) / TEMP_SCALE),
     0x11: ("stop_cfg_min", int),
     0x16: ("stop_rem_min", int),
+    0x13: ("humidity_set_pct", int),   # humidity setpoint % (Combi/Steam)
+    0x14: ("humidity_cur_pct", int),   # current humidity % (Combi/Steam)
 }
 
 FLAGS_KV_MAP: dict[int, tuple[str, callable]] = {
@@ -552,6 +554,8 @@ class SaunaController:
         self.t_cur_c: float | None = None
         self.stop_cfg_min: int | None = None   # configured Stop after (minutes)
         self.stop_rem_min: int | None = None   # remaining time to auto-off (minutes)
+        self.humidity_set_pct: int | None = None  # humidity setpoint % (Combi/Steam)
+        self.humidity_cur_pct: int | None = None  # current humidity % (Combi/Steam)
 
         # Faults / safety events
         self.last_fault: FaultEvent | None = None
@@ -1118,6 +1122,24 @@ class SaunaController:
             if standby_delta_raw is not None:
                 vals["standby_delta_c"] = float(standby_delta_raw) / TEMP_SCALE
 
+            # humidity setpoint % (field 0x13): Combi/Steam setups
+            humidity_set = None
+            for prefix_hex in ("d27d04081310", "d27d05081310"):
+                humidity_set = _parse_varint_after(data, prefix_hex)
+                if humidity_set is not None:
+                    break
+            if humidity_set is not None:
+                vals["humidity_set_pct"] = int(humidity_set)
+
+            # humidity current % (field 0x14): Combi/Steam setups
+            humidity_cur = None
+            for prefix_hex in ("d27d04081410", "d27d05081410"):
+                humidity_cur = _parse_varint_after(data, prefix_hex)
+                if humidity_cur is not None:
+                    break
+            if humidity_cur is not None:
+                vals["humidity_cur_pct"] = int(humidity_cur)
+
             # Light flag is sometimes embedded inside the status packet (observed in captures).
             # Prefer this over any unrelated da7d packets that may contain other internal flags.
             light_val = _parse_light_flag_from_bytes(data)
@@ -1153,6 +1175,14 @@ class SaunaController:
                 _LOGGER.info("Tylo Sauna standby_delta: %.1f°C", self.standby_delta_c)
                 changed = True
 
+            if "humidity_set_pct" in vals and vals["humidity_set_pct"] != self.humidity_set_pct:
+                self.humidity_set_pct = int(vals["humidity_set_pct"])
+                changed = True
+
+            if "humidity_cur_pct" in vals and vals["humidity_cur_pct"] != self.humidity_cur_pct:
+                self.humidity_cur_pct = int(vals["humidity_cur_pct"])
+                changed = True
+
         # Derive HEAT from remaining time if available.
         new_heat = None
         if self.stop_rem_min is not None:
@@ -1164,7 +1194,8 @@ class SaunaController:
         if changed:
             telemetry_src = self.telemetry_host or self.host
             _LOGGER.info(
-                "Tylo Sauna state: LIGHT=%s, HEAT=%s, Tset=%s°C, Tcur=%s°C, StopCfg=%s, StopRem=%s "
+                "Tylo Sauna state: LIGHT=%s, HEAT=%s, Tset=%s°C, Tcur=%s°C, StopCfg=%s, StopRem=%s, "
+                "Hum=%s%% "
                 "(telemetry_host=%s, rx=%d, tx=%d)",
                 self.light,
                 self.heat,
@@ -1172,6 +1203,7 @@ class SaunaController:
                 f"{self.t_cur_c:.1f}" if self.t_cur_c is not None else "?",
                 self.stop_cfg_min if self.stop_cfg_min is not None else "?",
                 self.stop_rem_min if self.stop_rem_min is not None else "?",
+                self.humidity_cur_pct if self.humidity_cur_pct is not None else "?",
                 telemetry_src,
                 self.rx_packets,
                 self.tx_packets,
