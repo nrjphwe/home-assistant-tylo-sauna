@@ -198,12 +198,11 @@ class TyloSaunaPrograms(_BaseTyloSensor):
 
 
 class TyloSaunaHumidity(_BaseTyloSensor):
-    """Current humidity % (experimental, Combi/Steam setups)."""
+    """Current humidity % (Combi/Steam setups)."""
 
     _attr_device_class = SensorDeviceClass.HUMIDITY
     _attr_native_unit_of_measurement = "%"
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_entity_registry_enabled_default = False
 
     def __init__(self, controller) -> None:
         super().__init__(controller)
@@ -220,11 +219,10 @@ class TyloSaunaHumidity(_BaseTyloSensor):
 
 
 class TyloSaunaHumiditySetpoint(_BaseTyloSensor):
-    """Humidity setpoint % (experimental, Combi/Steam setups)."""
+    """Humidity setpoint % (Combi/Steam setups)."""
 
     _attr_device_class = SensorDeviceClass.HUMIDITY
     _attr_native_unit_of_measurement = "%"
-    _attr_entity_registry_enabled_default = False
 
     def __init__(self, controller) -> None:
         super().__init__(controller)

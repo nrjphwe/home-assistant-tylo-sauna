@@ -1,15 +1,20 @@
 # Changelog
 
+## [0.4.2] - 2026-02-06
+
+### Fixed
+
+* **Humidity sensor/setpoint swapped:** fields 0x13 and 0x14 were mapped in reverse — `humidity` showed the setpoint and vice versa. Confirmed by user with Tylo Sense Combi Elite. Now correctly mapped: 0x13 = current humidity, 0x14 = setpoint.
+
+### Changed
+
+* **Humidity sensors enabled by default:** field mapping confirmed on real hardware (Combi Elite), sensors are no longer disabled by default.
+
 ## [0.4.1] - 2026-02-01
 
 ### Added
 
-* **Humidity sensors (EXPERIMENTAL):** two new sensors for Combi/Steam setups — `sensor.tylo_sauna_humidity` (current humidity %) and `sensor.tylo_sauna_humidity_setpoint` (target humidity %). Both sensors are **disabled by default** — enable them in entity settings if your sauna has humidity capability.
-
-### Note
-
-* Humidity support is based on reverse-engineered protocol fields (STATUS 0x13, 0x14) confirmed on a Combi (Shenandoah) capture. If you have a Combi or Steam setup, please enable these sensors and report whether the values match your app display — this helps validate the field mapping.
-* Saunas without humidity sensors may show 0% — this is expected. A future version will auto-detect humidity capability.
+* **Humidity sensors:** two new sensors for Combi/Steam setups — `sensor.tylo_sauna_humidity` (current humidity %) and `sensor.tylo_sauna_humidity_setpoint` (target humidity %).
 
 ## [0.4.0] - 2026-01-30
 

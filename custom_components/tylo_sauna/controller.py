@@ -134,8 +134,8 @@ STATUS_KV_MAP: dict[int, tuple[str, callable]] = {
     0x0C: ("t_cur_c", lambda v: float(v) / TEMP_SCALE),
     0x11: ("stop_cfg_min", int),
     0x16: ("stop_rem_min", int),
-    0x13: ("humidity_set_pct", int),   # humidity setpoint % (Combi/Steam)
-    0x14: ("humidity_cur_pct", int),   # current humidity % (Combi/Steam)
+    0x13: ("humidity_cur_pct", int),   # current humidity % (Combi/Steam)
+    0x14: ("humidity_set_pct", int),   # humidity setpoint % (Combi/Steam)
 }
 
 FLAGS_KV_MAP: dict[int, tuple[str, callable]] = {
@@ -554,8 +554,8 @@ class SaunaController:
         self.t_cur_c: float | None = None
         self.stop_cfg_min: int | None = None   # configured Stop after (minutes)
         self.stop_rem_min: int | None = None   # remaining time to auto-off (minutes)
-        self.humidity_set_pct: int | None = None  # humidity setpoint % (Combi/Steam)
         self.humidity_cur_pct: int | None = None  # current humidity % (Combi/Steam)
+        self.humidity_set_pct: int | None = None  # humidity setpoint % (Combi/Steam)
 
         # Faults / safety events
         self.last_fault: FaultEvent | None = None
@@ -1122,23 +1122,23 @@ class SaunaController:
             if standby_delta_raw is not None:
                 vals["standby_delta_c"] = float(standby_delta_raw) / TEMP_SCALE
 
-            # humidity setpoint % (field 0x13): Combi/Steam setups
-            humidity_set = None
-            for prefix_hex in ("d27d04081310", "d27d05081310"):
-                humidity_set = _parse_varint_after(data, prefix_hex)
-                if humidity_set is not None:
-                    break
-            if humidity_set is not None:
-                vals["humidity_set_pct"] = int(humidity_set)
-
-            # humidity current % (field 0x14): Combi/Steam setups
+            # current humidity % (field 0x13): Combi/Steam setups
             humidity_cur = None
-            for prefix_hex in ("d27d04081410", "d27d05081410"):
+            for prefix_hex in ("d27d04081310", "d27d05081310"):
                 humidity_cur = _parse_varint_after(data, prefix_hex)
                 if humidity_cur is not None:
                     break
             if humidity_cur is not None:
                 vals["humidity_cur_pct"] = int(humidity_cur)
+
+            # humidity setpoint % (field 0x14): Combi/Steam setups
+            humidity_set = None
+            for prefix_hex in ("d27d04081410", "d27d05081410"):
+                humidity_set = _parse_varint_after(data, prefix_hex)
+                if humidity_set is not None:
+                    break
+            if humidity_set is not None:
+                vals["humidity_set_pct"] = int(humidity_set)
 
             # Light flag is sometimes embedded inside the status packet (observed in captures).
             # Prefer this over any unrelated da7d packets that may contain other internal flags.
