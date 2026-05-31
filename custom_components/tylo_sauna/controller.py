@@ -722,6 +722,7 @@ class SaunaController:
             return
 
         async def _tick(_now):
+            _LOGGER.warning("WATCHDOG TICK fired")
             online = self.is_online()
             _LOGGER.warning("WATCHDOG: online=%s cached=%s last_rx_monotonic=%s", online, self._online_cached, self.last_rx_monotonic)
             now_m = time.monotonic()
