@@ -824,6 +824,12 @@ class SaunaController:
 
         self._transport.sendto(payload, (self.host, dst_port))
         self.tx_packets += 1
+        _LOGGER.warning(
+            "TX %s -> %s",
+            payload.hex(),
+            desc,
+        )
+
         self._debug_record("tx", (self.host, dst_port), payload, note=desc)
         if desc:
             _LOGGER.debug("Tylo Sauna: send %s (%d bytes) -> %s:%s", desc, len(payload), self.host, dst_port)
