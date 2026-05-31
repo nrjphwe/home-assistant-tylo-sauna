@@ -873,10 +873,25 @@ class SaunaController:
     def datagram_received(self, data: bytes, addr) -> None:
         _LOGGER.warning("RAW RX from %s: %s", addr, data.hex())  # ← ADD THIS
         src_ip, src_port = addr
+
         # Broadcast channel (state updates)
         if src_port == 54377:
             self._handle_broadcast(data)
             return
+
+        _LOGGER.warning("RX step1: telemetry_host=%s host=%s src_ip=%s", self.telemetry_host, self.host, src_ip)
+
+        if self.telemetry_host is not None:
+            if src_ip != self.telemetry_host:
+                _LOGGER.warning("RX: DROPPED - pinned host mismatch")
+                return
+        else:
+            if src_ip == self.host:
+                _LOGGER.warning("RX: accepted - matches configured host")
+            else:
+                if not _looks_like_tylo_telemetry(data):
+                    _LOGGER.warning("RX: DROPPED - not telemetry-like: %s", data.hex())
+                    return
 
         if src_port == 54377:
             _LOGGER.debug("Tylo BROADCAST (54377) %d bytes: %s", len(data), data.hex())
