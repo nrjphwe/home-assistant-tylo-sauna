@@ -1252,7 +1252,11 @@ class SaunaController:
     def light_off(self) -> None:
         self._send(LIGHT_OFF_PAYLOAD, "LIGHT OFF")
 
-    def heat_on(self) -> None:
+    def ensure_session(self):
+        self._send(INIT_SHORT, "SESSION REFRESH")
+
+    def heat_on(self):
+        self.ensure_session()
         self._send(HEAT_ON_PAYLOAD, "HEAT ON")
         # self._send(HEAT_AUX_PAYLOAD, "HEAT AUX")
 
