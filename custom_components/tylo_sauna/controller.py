@@ -29,12 +29,12 @@ INIT_SHORT = bytes.fromhex("8241020802")
 
 # Light commands
 LIGHT_OFF_PAYLOAD = bytes.fromhex("a24204080a1000")
-LIGHT_ON_PAYLOAD  = bytes.fromhex("a24204080a1001")
+LIGHT_ON_PAYLOAD = bytes.fromhex("a24204080a1001")
 
 # Heating commands
-HEAT_ON_PAYLOAD  = bytes.fromhex("c24302500b")
+HEAT_ON_PAYLOAD = bytes.fromhex("c24302500b")
 HEAT_OFF_PAYLOAD = bytes.fromhex("c24302500a")
-STANDBY_PAYLOAD  = bytes.fromhex("c24302500c")  # standby mode (reduced temperature)
+STANDBY_PAYLOAD = bytes.fromhex("c24302500c")  # standby mode (reduced temperature)
 HEAT_AUX_PAYLOAD = bytes.fromhex("d23e02081f")  # extra packet sent by the app for HEAT
 
 # Operating modes (from telemetry response 9280010258XX)
