@@ -717,6 +717,7 @@ class SaunaController:
 
 
     def start_watchdog(self) -> None:
+        _LOGGER.warning("WATCHDOG: start_watchdog called, already running=%s", self._unsub_watchdog is not None)
         if self._unsub_watchdog is not None:
             return
 
