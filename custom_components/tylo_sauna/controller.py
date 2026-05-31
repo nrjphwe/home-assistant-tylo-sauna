@@ -871,6 +871,7 @@ class SaunaController:
         _LOGGER.info("Tylo Sauna: connection lost: %s", exc)
 
     def datagram_received(self, data: bytes, addr) -> None:
+        _LOGGER.warning("RAW RX from %s: %s", addr, data.hex())  # ← ADD THIS
         src_ip, src_port = addr
         # Broadcast channel (state updates)
         if src_port == 54377:
