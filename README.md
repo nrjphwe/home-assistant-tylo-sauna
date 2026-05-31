@@ -1,3 +1,5 @@
+# Fork by nrjphwe
+
 # Tylo Sauna – Home Assistant Custom Integration
 
 Local (LAN) Home Assistant integration for **Tylo Elite / Elite WiFi** controllers.
@@ -13,90 +15,81 @@ For each configured controller the integration creates one device with:
 
 ### Core control
 
-* **Climate** – `climate.tylo_sauna`
+- **Climate** – `climate.tylo_sauna`
+  - HVAC modes: `off` / `heat_cool` (standby) / `heat`
+  - Target temperature (°C)
+  - Current temperature (°C)
+  - Attributes:
+    - `stop_after_min` – configured "Stop after" (minutes)
+    - `stop_remaining_min` – remaining countdown to auto-off (minutes)
+    - `door_fault_pending` – blocks starting heat when acknowledgement is required
+    - `standby_enabled` – whether standby mode is configured on the controller
+    - `standby_delta_c` – temperature reduction in standby mode (°C)
 
-  * HVAC modes: `off` / `heat_cool` (standby) / `heat`
-  * Target temperature (°C)
-  * Current temperature (°C)
-  * Attributes:
+- **Light** – `light.tylo_sauna_light`
+  - Simple on/off control
 
-    * `stop_after_min` – configured "Stop after" (minutes)
-    * `stop_remaining_min` – remaining countdown to auto-off (minutes)
-    * `door_fault_pending` – blocks starting heat when acknowledgement is required
-    * `standby_enabled` – whether standby mode is configured on the controller
-    * `standby_delta_c` – temperature reduction in standby mode (°C)
+- **Number** – `number.tylo_sauna_stop_time`
+  - “Stop after” minutes (0–600 by default)
+  - Sends the same command sequence as the official app
 
-* **Light** – `light.tylo_sauna_light`
-
-  * Simple on/off control
-
-* **Number** – `number.tylo_sauna_stop_time`
-
-  * “Stop after” minutes (0–600 by default)
-  * Sends the same command sequence as the official app
-
-* **Sensor** – `sensor.tylo_sauna_time_to_off`
-
-  * Remaining time until auto-off (minutes)
+- **Sensor** – `sensor.tylo_sauna_time_to_off`
+  - Remaining time until auto-off (minutes)
 
 ### Favorites (presets)
 
-* **Select** – `select.tylo_sauna_favorite`
+- **Select** – `select.tylo_sauna_favorite`
+  - Auto-updated list of controller presets (favorites)
+  - Selecting a preset applies it as a “scene”:
+    - target temperature
+    - stop-after minutes
+    - light on/off
 
-  * Auto-updated list of controller presets (favorites)
-  * Selecting a preset applies it as a “scene”:
-
-    * target temperature
-    * stop-after minutes
-    * light on/off
-  * (Heating start remains a separate action via the climate entity, same as the official app UX.)
+  - (Heating start remains a separate action via the climate entity, same as the official app UX.)
 
 ### Schedule / programs (read-only)
 
-* **Sensor** – `sensor.tylo_sauna_programs`
-
-  * Displays scheduled programs from the Tylo calendar tab
-  * Format: `09:00–12:00 Bath 88°C | 15:00–18:00 Standby FAV111`
-  * Shows "No programs" when the schedule is empty
-  * Attributes: `program_count`, `programs` (structured list with slot, timestamps, mode, temperature or favorite name)
+- **Sensor** – `sensor.tylo_sauna_programs`
+  - Displays scheduled programs from the Tylo calendar tab
+  - Format: `09:00–12:00 Bath 88°C | 15:00–18:00 Standby FAV111`
+  - Shows "No programs" when the schedule is empty
+  - Attributes: `program_count`, `programs` (structured list with slot, timestamps, mode, temperature or favorite name)
 
 ### Humidity (Combi/Steam only)
 
-* `sensor.tylo_sauna_humidity` – current humidity %
-* `sensor.tylo_sauna_humidity_setpoint` – humidity setpoint %
+- `sensor.tylo_sauna_humidity` – current humidity %
+- `sensor.tylo_sauna_humidity_setpoint` – humidity setpoint %
 
 > Humidity sensors are available for Combi and Steam setups. Saunas without humidity capability will show 0%.
 
 ### Door safety / faults (diagnostics)
 
-* `sensor.tylo_sauna_fault_code` – last fault code (e.g. door cancellation)
-* `sensor.tylo_sauna_fault_message` – last fault message
-* The integration prevents “silent start failures” by blocking heat start when the controller requires acknowledgement.
+- `sensor.tylo_sauna_fault_code` – last fault code (e.g. door cancellation)
+- `sensor.tylo_sauna_fault_message` – last fault message
+- The integration prevents “silent start failures” by blocking heat start when the controller requires acknowledgement.
 
 ### Connectivity & diagnostics (no Activity spam)
 
-* **Binary sensor** – `binary_sensor.tylo_sauna_online` (Diagnostic)
-
-  * Always available, even when the sauna is offline.
-  * Includes diagnostic attributes:
-
-    * `last_seen` / `seconds_ago` (as attributes, not a separate sensor)
-    * configured host (user preference)
-    * effective telemetry source (useful in multi-node setups)
-    * effective control port (`control_port`)
-    * rx/tx counters
+- **Binary sensor** – `binary_sensor.tylo_sauna_online` (Diagnostic)
+  - Always available, even when the sauna is offline.
+  - Includes diagnostic attributes:
+    - `last_seen` / `seconds_ago` (as attributes, not a separate sensor)
+    - configured host (user preference)
+    - effective telemetry source (useful in multi-node setups)
+    - effective control port (`control_port`)
+    - rx/tx counters
 
 ---
 
 ## Requirements
 
-* Tylo Elite / Elite WiFi controller reachable on the LAN
-* Home Assistant and the controller must be able to exchange UDP packets
+- Tylo Elite / Elite WiFi controller reachable on the LAN
+- Home Assistant and the controller must be able to exchange UDP packets
 
 ### Ports (observed)
 
-* Discovery uses UDP **54377 / 54378** (same as the official app)
-* Control/telemetry uses a **dynamic, session-specific UDP port** (chosen by the controller) and it may change after reboot.
+- Discovery uses UDP **54377 / 54378** (same as the official app)
+- Control/telemetry uses a **dynamic, session-specific UDP port** (chosen by the controller) and it may change after reboot.
   **This integration auto-detects the effective port from discovery/announce and learns it from incoming telemetry.**
 
 ---
@@ -107,9 +100,9 @@ For each configured controller the integration creates one device with:
 
 1. HACS → Integrations → Custom repositories
 2. Add:
+   - URL: `https://github.com/skyer/home-assistant-tylo-sauna`
+   - Category: Integration
 
-   * URL: `https://github.com/skyer/home-assistant-tylo-sauna`
-   * Category: Integration
 3. Install **Tylo Sauna**
 4. Restart Home Assistant
 5. Settings → Devices & Services → Add Integration → **Tylo Sauna**
@@ -132,11 +125,10 @@ The integration uses a **two-step** setup:
 
 1. **Select discovered device** (if discovery works) or choose **Manual**.
 2. **Confirm settings**:
-
-   * Name (default is the controller’s advertised name if available)
-   * “Allow telemetry from other IPs (recommended)”
+   - Name (default is the controller’s advertised name if available)
+   - “Allow telemetry from other IPs (recommended)”
      Enable this if your system sends telemetry from a different node/IP (common for sauna + steam systems).
-   * If discovery found devices but you chose **Manual**, the host/port fields are pre-filled from discovery to avoid guessing the control port.
+   - If discovery found devices but you chose **Manual**, the host/port fields are pre-filled from discovery to avoid guessing the control port.
 
 ### Docker note
 
@@ -151,10 +143,10 @@ The integration also caches the last-known endpoint per controller GUID to impro
 
 Use **Settings → Devices & Services → Tylo Sauna → Configure** (Options flow) to change:
 
-* host/IP
-* UDP port
-* name
-* “Allow telemetry from other IPs”
+- host/IP
+- UDP port
+- name
+- “Allow telemetry from other IPs”
 
 No need to remove/re-add the integration.
 
@@ -198,17 +190,16 @@ The diagnostics file includes configuration, controller state, and a buffer of t
 
 Most common causes:
 
-* Controller uses a **different control port** than expected (fixed via discovery parsing + port learning; some setups change ports after reboot).
-* Home Assistant cannot receive UDP replies (firewall, VLAN isolation, guest Wi-Fi, etc.).
-* Telemetry arrives from a different node/IP → enable “Allow telemetry from other IPs”.
+- Controller uses a **different control port** than expected (fixed via discovery parsing + port learning; some setups change ports after reboot).
+- Home Assistant cannot receive UDP replies (firewall, VLAN isolation, guest Wi-Fi, etc.).
+- Telemetry arrives from a different node/IP → enable “Allow telemetry from other IPs”.
 
 Check `binary_sensor.tylo_sauna_online`:
 
-* If `off`, inspect its attributes:
-
-  * `effective_telemetry_host`
-  * `control_port`
-  * `seconds_ago`
+- If `off`, inspect its attributes:
+  - `effective_telemetry_host`
+  - `control_port`
+  - `seconds_ago`
 
 ### Enable debug logging
 
@@ -233,9 +224,9 @@ When enabled on the panel:
 
 1. The controller advertises standby as available (`standby_enabled: true`)
 2. The integration exposes three HVAC modes:
-   * `off` – sauna is off
-   * `heat_cool` – **standby mode** (reduced temperature heating)
-   * `heat` – full heating
+   - `off` – sauna is off
+   - `heat_cool` – **standby mode** (reduced temperature heating)
+   - `heat` – full heating
 3. The temperature reduction is shown in the `standby_delta_c` attribute (e.g., 18°C means the sauna heats to `target - 18°C` in standby)
 
 **Note:** Home Assistant's climate entity uses `heat_cool` as the closest standard mode for standby. You can customize the display name in your dashboard using a custom card or template.
@@ -286,8 +277,9 @@ For **Tylo Steam** controllers with an aroma pump (e.g., Eucalyptus), there is a
 3. Reload the integration
 
 This creates two button entities:
-* `button.tylo_sauna_aroma_eucalyptus_on`
-* `button.tylo_sauna_aroma_eucalyptus_off`
+
+- `button.tylo_sauna_aroma_eucalyptus_on`
+- `button.tylo_sauna_aroma_eucalyptus_off`
 
 **Why experimental?** The aroma protocol was reverse-engineered from a single capture and has not been tested on real hardware. If you have a Steam controller with aroma pump, please test and report results in [GitHub Issues](https://github.com/skyer/home-assistant-tylo-sauna/issues).
 
@@ -311,8 +303,8 @@ The diagnostics file contains a ring buffer of the last ~2000 UDP packets — en
 
 ## Notes & limitations
 
-* Reverse engineered protocol; firmware updates may change behavior.
-* This project targets Tylo Elite local LAN mode; other models may differ.
+- Reverse engineered protocol; firmware updates may change behavior.
+- This project targets Tylo Elite local LAN mode; other models may differ.
 
 ---
 
