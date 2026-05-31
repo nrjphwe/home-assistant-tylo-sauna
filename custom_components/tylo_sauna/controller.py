@@ -812,14 +812,16 @@ class SaunaController:
             self._transport.close()
             self._transport = None
 
-
     def _send(self, payload: bytes, desc: str = "", port: int | None = None) -> None:
         if not self._transport:
             _LOGGER.warning("Tylo Sauna: transport not ready, cannot send %s", desc or "")
             return
 
         dst_port = int(self.last_rx_port or self.control_port)
-        #dst_port = int(port) if port is not None else int(self.control_port)
+        # dst_port = int(port) if port is not None else int(self.control_port)
+
+        _LOGGER.warning("TX %s -> %s:%s (%s)", payload.hex(), self.host, dst_port, desc)
+
         self._transport.sendto(payload, (self.host, dst_port))
         self.tx_packets += 1
         self._debug_record("tx", (self.host, dst_port), payload, note=desc)
