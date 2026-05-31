@@ -860,6 +860,13 @@ class SaunaController:
 
     def datagram_received(self, data: bytes, addr) -> None:
         src_ip, src_port = addr
+        # Broadcast channel (state updates)
+        if src_port == 54377:
+            self._handle_broadcast(data)
+            return
+
+        if src_port == 54377:
+            _LOGGER.debug("Tylo BROADCAST (54377) %d bytes: %s", len(data), data.hex())
 
         # If GUID is not known (manual setup), try to learn it from incoming Tylo packets.
         # Not all firmwares include it in unicast telemetry, but when present it helps discovery-first caching.
@@ -1209,6 +1216,9 @@ class SaunaController:
                 self.tx_packets,
             )
             self._notify_listeners()
+
+    def _handle_broadcast(self, data: bytes) -> None:
+        _LOGGER.debug("Tylo broadcast payload (%d bytes): %s", len(data), data.hex())
 
     # === API for entities ===
 
