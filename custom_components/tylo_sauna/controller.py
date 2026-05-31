@@ -979,6 +979,7 @@ class SaunaController:
         self.last_rx_port = int(src_port)
 
         self.rx_packets += 1
+        _LOGGER.warning("RX: setting last_rx_monotonic, rx_packets will be %d", self.rx_packets + 1)
         self.last_rx_monotonic = time.monotonic()
         self.last_rx_dt = dt_util.utcnow()
         self._debug_record("rx", addr, data)
