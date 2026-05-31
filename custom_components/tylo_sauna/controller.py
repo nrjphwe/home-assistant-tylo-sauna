@@ -439,6 +439,10 @@ def _looks_like_tylo_telemetry(data: bytes) -> bool:
     """
     Heuristic check to avoid accepting random UDP noise as telemetry.
     """
+    # INIT/HELLO acknowledgement from controller
+    if data[:2] == b"\x8a\x7d":
+        return True
+
     # Allow known non-telemetry packets that we still want to accept
     if data.startswith(b"\xc2\x7f"):  # favorites snapshot (field 2040)
         return True
@@ -1227,6 +1231,8 @@ class SaunaController:
 
     def _handle_broadcast(self, data: bytes) -> None:
         _LOGGER.debug("Tylo broadcast payload (%d bytes): %s", len(data), data.hex())
+        # Route broadcast telemetry into the main handler
+        self._handle_telemetry(data)
 
     # === API for entities ===
 
