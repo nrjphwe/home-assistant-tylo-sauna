@@ -1252,7 +1252,7 @@ class SaunaController:
 
     def heat_on(self) -> None:
         self._send(HEAT_ON_PAYLOAD, "HEAT ON")
-        self._send(HEAT_AUX_PAYLOAD, "HEAT AUX")
+        # self._send(HEAT_AUX_PAYLOAD, "HEAT AUX")
 
     def heat_off(self) -> None:
         self._send(HEAT_OFF_PAYLOAD, "HEAT OFF")
