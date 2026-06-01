@@ -1337,6 +1337,31 @@ class SaunaController:
         _LOGGER.warning("Triggering Tylö Cloud HEAT OFF via background task")
         self._hass.create_task(self._send_http(base64_cmd, "HEAT OFF"))
 
+def set_temperature(self, temperature: float):
+        """Räknar ut och skickar ny måltemperatur till Tylö Cloud."""
+        self.ensure_session()
+        
+        # 1. Konvertera temperaturen till Tylös interna format (Celsius * 9)
+        celsius = int(round(temperature))
+        tylo_val = celsius * 9
+        
+        # 2. Packa talet som en Protobuf Varint
+        byte1 = (tylo_val & 0x7F) | 0x80
+        byte2 = (tylo_val >> 7) & 0x7F
+        
+        # 3. Sätt ihop med Tylös fasta header för temperaturändring
+        header = bytes([0xd2, 0x41, 0x05, 0x08, 0x0a, 0x10])
+        protobuf_packet = header + bytes([byte1, byte2])
+        
+        # 4. Gör om till Base64-strängen som molnet vill ha
+        import base64
+        base64_cmd = base64.b64encode(protobuf_packet).decode('utf-8')
+        
+        _LOGGER.warning("Setting Tylö Cloud temp to %s°C (Internal val: %s, Base64: %s)", celsius, tylo_val, base64_cmd)
+        
+        # 5. Skjut iväg till molnet i bakgrunden via vår fungerande HTTP-funktion
+        self._hass.create_task(self._send_http(base64_cmd, f"SET TEMP {celsius}C"))
+
 
     def standby(self) -> None:
         """Activate standby mode (reduced temperature heating)."""
