@@ -1337,41 +1337,28 @@ class SaunaController:
         _LOGGER.warning("Triggering Tylö Cloud HEAT OFF via background task")
         self._hass.create_task(self._send_http(base64_cmd, "HEAT OFF"))
 
-    async def async_set_temperature(self, temperature: float) -> None:
-        """Räknar ut och skickar ny måltemperatur asynkront till Tylö Cloud."""
+    async def async_set_temperature(self, temp_c: float) -> None:
+        """Räknar ut och skickar ny måltemperatur till Tylö Cloud."""
         self.ensure_session()
-        
-        # 1. Konvertera temperaturen till Tylös interna format (Celsius * 9)
-        celsius = int(round(temperature))
-        tylo_val = celsius * 9
-        
-        # 2. Packa talet som en Protobuf Varint
-        byte1 = (tylo_val & 0x7F) | 0x80
-        byte2 = (tylo_val >> 7) & 0x7F
-        
-        # 3. Sätt ihop med Tylös fasta header för temperaturändring
-        header = bytes([0xd2, 0x41, 0x05, 0x08, 0x0a, 0x10])
-        protobuf_packet = header + bytes([byte1, byte2])
-        
-        # 4. Gör om till Base64-strängen som molnet vill ha
+
+        # 1. Använd integrationens befintliga logik för att räkna ut värdet
+        raw = int(round(temp_c * 9.0))
+        prefix = bytes.fromhex("d24105080a10")
+        protobuf_packet = prefix + _encode_varint(raw)
+
+        # 2. Gör om till Base64-strängen som molnet vill ha
         import base64
         base64_cmd = base64.b64encode(protobuf_packet).decode('utf-8')
-        
-        _LOGGER.warning("Setting Tylö Cloud temp to %s°C (Internal val: %s, Base64: %s)", celsius, tylo_val, base64_cmd)
-        
-        # 5. Kör direkt med await eftersom vi redan är i en asynkron kedja
-        await self._send_http(base64_cmd, f"SET TEMP {celsius}C")
+
+        _LOGGER.warning("Setting Tylö Cloud temp to %s°C (Internal val: %s, Base64: %s)", temp_c, raw, base64_cmd)
+
+        # 3. Skicka till molnet via vårt fungerande HTTP-anrop
+        await self._send_http(base64_cmd, f"SET TEMP {temp_c:.1f}°C")
 
     def standby(self) -> None:
         """Activate standby mode (reduced temperature heating)."""
         self._send(STANDBY_PAYLOAD, "STANDBY")
         self._send(HEAT_AUX_PAYLOAD, "STANDBY AUX")
-
-    async def async_set_temperature(self, temp_c: float) -> None:
-        raw = int(round(temp_c * 9.0))
-        prefix = bytes.fromhex("d24105080a10")
-        payload = prefix + _encode_varint(raw)
-        self._send(payload, f"SETTEMP {temp_c:.1f}°C")
 
     async def async_set_stop_after(self, minutes: int) -> None:
         m = int(minutes)
