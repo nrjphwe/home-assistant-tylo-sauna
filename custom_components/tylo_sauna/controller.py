@@ -869,7 +869,6 @@ class SaunaController:
         self.start_keepalive()
         self.start_watchdog()
 
-
     def connection_lost(self, exc: Exception | None) -> None:
         _LOGGER.info("Tylo Sauna: connection lost: %s", exc)
 
