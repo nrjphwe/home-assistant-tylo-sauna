@@ -840,14 +840,23 @@ class SaunaController:
         # Vi lägger parametern direkt i URL:en istället!
         url = f"https://remote.tylohelo.com/api/directmessages?base64encodedMessage={base64_message}"
 
-        # Hämtar token direkt från Home Assistants secrets.yaml
         try:
-            token = self._hass.config.secrets.get("tylo_cloud_token")
+            import os
+            from homeassistant.config import load_yaml_config_file
+
+            # Hitta stigen till din configuration.yaml / secrets.yaml
+            config_dir = self._hass.config.config_dir
+            secrets_path = os.path.join(config_dir, "secrets.yaml")
+
+            # Läs in secrets som en vanlig Python-dict
+            secrets = load_yaml_config_file(secrets_path)
+            token = secrets.get("tylo_cloud_token")
+
             if not token:
                 _LOGGER.error("Hittade inte 'tylo_cloud_token' i secrets.yaml!")
                 return
         except Exception as e:
-            _LOGGER.error("Kunde inte läsa secrets från Home Assistant: %s", e)
+            _LOGGER.error("Kunde inte läsa secrets.yaml från Home Assistant: %s", e)
             return
 
         headers = {
