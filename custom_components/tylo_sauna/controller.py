@@ -1328,7 +1328,7 @@ class SaunaController:
 
         # 2. Skjut iväg det nya HTTPS POST-anropet till Tylö Cloud i bakgrunden
         # Ersätt 'yj4A' med det aktuella Base64-meddelandet om det ändras
-        base64_cmd = "yj4A" 
+        base64_cmd = "wkMCUAs="
 
         _LOGGER.warning("Triggering Tylö Cloud HEAT ON via background task")
         self._hass.create_task(self._send_http(base64_cmd, "HEAT ON"))
@@ -1341,7 +1341,7 @@ class SaunaController:
 
         # 2. Skjut iväg det nya HTTPS POST-anropet till Tylö Cloud i bakgrunden
         # Ersätt 'yj4A' med det aktuella Base64-meddelandet om det ändras
-        base64_cmd = "yj4A" 
+        base64_cmd = "wkMCUAo="
 
         _LOGGER.warning("Triggering Tylö Cloud HEAT OFF via background task")
         self._hass.create_task(self._send_http(base64_cmd, "HEAT OFF"))
