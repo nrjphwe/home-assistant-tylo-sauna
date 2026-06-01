@@ -1,4 +1,5 @@
 import asyncio
+import aiohttp
 import logging
 import re
 from collections import deque
@@ -820,6 +821,39 @@ class SaunaController:
             self._transport = None
 
     def _send(self, payload: bytes, desc: str = "", port: int | None = None) -> None:
+        """Skickar kommando till Tylöhelo Cloud via HTTPS POST."""
+        url = "https://remote.tylohelo.com/api/directmessages"
+
+        # Hårdkoda din fungerande Token temporärt för att testa anslutningen
+        # OBS: Denna token går ut efter ett tag, se "Nästa steg" längre ner.
+        token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6Inl2ajQ4ViIsIm5hbWVpZCI6IjQyNzNmNTFlLWY4NWItNDM3OC1iODJhLTQ0MjFiMDRlYjlhMiIsImNlcnRzZXJpYWxudW1iZXIiOiJkMDFkNTk1MS02Y2ExLWJlYzEtZDdhYy00MDVhMDYzNjU1ZjUiLCJuYmYiOjE3ODAxNDExNTYsImV4cCI6MTc4MDE0NDc1NiwiaWF0IjoxNzgwMTQxMTU2fQ.UJhWQO4ZYi8isFzHVsLedm5ilwY4JPxAG-V6BeF7Oik"
+
+        headers = {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': '*/*',
+            'Connection': 'keep-alive',
+            'User-Agent': 'Tylo Elite/1.5.19 (iPhone; iOS 26.5; Scale/3.00)',
+            'Authorization': f'bearer {token}'
+        }
+
+        payload = {
+            'base64encodedMessage': base64_message
+        }
+
+        _LOGGER.warning("HTTP TX -> Tylö Cloud (%s): Message=%s", desc, base64_message)
+
+        try:
+            # Använd Home Assistants inbyggda aiohttp-klient för säkra anrop
+            session = self._hass.helpers.aiohttp_client.async_get_clientsession()
+            async with session.post(url, data=payload, headers=headers, timeout=10) as response:
+                if response.status == 200:
+                    _LOGGER.warning("HTTP RX <- Tylö Cloud: 200 OK för %s", desc)
+                else:
+                    _LOGGER.error("HTTP RX <- Tylö Cloud FEL: Status %s för %s", response.status, desc)
+        except Exception as e:
+            _LOGGER.error("Det gick inte att skicka HTTP-anrop till Tylö: %s", e)
+
+
         if not self._transport:
             _LOGGER.warning("Tylo Sauna: transport not ready, cannot send %s", desc or "")
             return
@@ -1288,12 +1322,30 @@ class SaunaController:
 
     def heat_on(self):
         self.ensure_session()
-        self._send(HEAT_ON_PAYLOAD, "HEAT ON")
+        # 1. Vi kan låta den gamla loggningen/UDP vara kvar om du vill (eller kommentera bort)
+        # self._send(HEAT_ON_PAYLOAD, "HEAT ON")
         # self._send(HEAT_AUX_PAYLOAD, "HEAT AUX")
 
+        # 2. Skjut iväg det nya HTTPS POST-anropet till Tylö Cloud i bakgrunden
+        # Ersätt 'yj4A' med det aktuella Base64-meddelandet om det ändras
+        base64_cmd = "yj4A" 
+
+        _LOGGER.warning("Triggering Tylö Cloud HEAT ON via background task")
+        self._hass.create_task(self._send_http(base64_cmd, "HEAT ON"))
+
     def heat_off(self) -> None:
-        self._send(HEAT_OFF_PAYLOAD, "HEAT OFF")
-        self._send(HEAT_AUX_PAYLOAD, "HEAT AUX")
+        self.ensure_session()
+        # 1. Vi kan låta den gamla loggningen/UDP vara kvar om du vill (eller kommentera bort)
+        # self._send(HEAT_ON_PAYLOAD, "HEAT OFF")
+        # self._send(HEAT_AUX_PAYLOAD, "HEAT AUX")
+
+        # 2. Skjut iväg det nya HTTPS POST-anropet till Tylö Cloud i bakgrunden
+        # Ersätt 'yj4A' med det aktuella Base64-meddelandet om det ändras
+        base64_cmd = "yj4A" 
+
+        _LOGGER.warning("Triggering Tylö Cloud HEAT OFF via background task")
+        self._hass.create_task(self._send_http(base64_cmd, "HEAT OFF"))
+
 
     def standby(self) -> None:
         """Activate standby mode (reduced temperature heating)."""
