@@ -840,8 +840,15 @@ class SaunaController:
         # Vi lägger parametern direkt i URL:en istället!
         url = f"https://remote.tylohelo.com/api/directmessages?base64encodedMessage={base64_message}"
 
-        # Hårdkoda din fungerande Token temporärt för att testa anslutningen
-        token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6Inl2ajQ4ViIsIm5hbWVpZCI6IjQyNzNmNTFlLWY4NWItNDM3OC1iODJhLTQ0MjFiMDRlYjlhMiIsImNlcnRzZXJpYWxudW1iZXIiOiJkMDFkNTk1MS02Y2ExLWJlYzEtZDdhYy00MDVhMDYzNjU1ZjUiLCJuYmYiOjE3ODAxNDExNTYsImV4cCI6MTc4MDE0NDc1NiwiaWF0IjoxNzgwMTQxMTU2fQ.UJhWQO4ZYi8isFzHVsLedm5ilwY4JPxAG-V6BeF7Oik"
+        # Hämtar token direkt från Home Assistants secrets.yaml
+        try:
+            token = self._hass.config.secrets.get("tylo_cloud_token")
+            if not token:
+                _LOGGER.error("Hittade inte 'tylo_cloud_token' i secrets.yaml!")
+                return
+        except Exception as e:
+            _LOGGER.error("Kunde inte läsa secrets från Home Assistant: %s", e)
+            return
 
         headers = {
             'Content-Type': 'application/x-www-form-urlencoded',
@@ -850,7 +857,6 @@ class SaunaController:
             'User-Agent': 'Tylo Elite/1.5.19 (iPhone; iOS 26.5; Scale/3.00)',
             'Authorization': f'bearer {token}'
         }
-
         _LOGGER.warning("HTTP TX -> Tylö Cloud (%s): Message=%s", desc, base64_message)
 
         try:
