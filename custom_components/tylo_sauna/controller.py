@@ -1337,8 +1337,8 @@ class SaunaController:
         _LOGGER.warning("Triggering Tylö Cloud HEAT OFF via background task")
         self._hass.create_task(self._send_http(base64_cmd, "HEAT OFF"))
 
-def set_temperature(self, temperature: float):
-        """Räknar ut och skickar ny måltemperatur till Tylö Cloud."""
+    async def async_set_temperature(self, temperature: float) -> None:
+        """Räknar ut och skickar ny måltemperatur asynkront till Tylö Cloud."""
         self.ensure_session()
         
         # 1. Konvertera temperaturen till Tylös interna format (Celsius * 9)
@@ -1359,9 +1359,8 @@ def set_temperature(self, temperature: float):
         
         _LOGGER.warning("Setting Tylö Cloud temp to %s°C (Internal val: %s, Base64: %s)", celsius, tylo_val, base64_cmd)
         
-        # 5. Skjut iväg till molnet i bakgrunden via vår fungerande HTTP-funktion
-        self._hass.create_task(self._send_http(base64_cmd, f"SET TEMP {celsius}C"))
-
+        # 5. Kör direkt med await eftersom vi redan är i en asynkron kedja
+        await self._send_http(base64_cmd, f"SET TEMP {celsius}C")
 
     def standby(self) -> None:
         """Activate standby mode (reduced temperature heating)."""
