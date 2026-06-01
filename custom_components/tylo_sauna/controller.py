@@ -1195,6 +1195,25 @@ class SaunaController:
             if t_cur_raw is not None:
                 vals["t_cur_c"] = float(t_cur_raw) / TEMP_SCALE
 
+            # --- NYTT: Fallback för Tylö Cloud / HTTP-telemetri ---
+            if t_cur_raw is None and t_set_raw is None:
+                # Kolla efter nuvarande temp (ad02) i molnpaketet
+                # fält 0x15: ad 02 <varint>
+                t_cur_cloud = _parse_varint_after(data, "ad02")
+                if t_cur_cloud is not None:
+                    vals["t_cur_c"] = float(t_cur_cloud) / TEMP_SCALE
+
+                # Kolla efter måltemp (a001) i molnpaketet
+                # fält 0x14: a0 01 <varint>
+                t_set_cloud = _parse_varint_after(data, "a001")
+                if t_set_cloud is not None:
+                    # Molnet skickar ibland måltemp som exakt värde * 2 (t.ex. 160 för 80°C)
+                    # Vi justerar baserat på det interna värdet vi såg vid SET (450 för 50°C)
+                    if t_set_cloud > 200:
+                        vals["t_set_c"] = float(t_set_cloud) / TEMP_SCALE
+                    else:
+                        vals["t_set_c"] = float(t_set_cloud) / 2.0
+
             # standby temperature delta (field 0x0b): d27d 05 08 0b 10 <varint>
             standby_delta_raw = _parse_varint_after(data, "d27d05080b10")
             if standby_delta_raw is not None:
