@@ -202,6 +202,11 @@ class RuntimeDiscovery:
                     src_ip=str(src_ip),
                     guid=str(guid),
                 )
+                # Forward broadcast payload to controller for telemetry parsing
+                try:
+                    c.datagram_received(data, addr)
+                except Exception:  # noqa: BLE001
+                    pass
             except Exception:  # noqa: BLE001
                 continue
 
