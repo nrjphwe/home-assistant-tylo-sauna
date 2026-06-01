@@ -837,8 +837,8 @@ class SaunaController:
             _LOGGER.error("Fel vid UDP-sändning: %s", e)
 
     async def _send_http(self, base64_message: str, desc: str = "") -> None:
-        """Ny funktion: Skickar kommando till Tylöhelo Cloud via HTTPS POST."""
-        url = "https://remote.tylohelo.com/api/directmessages"
+        # Vi lägger parametern direkt i URL:en istället!
+        url = f"https://remote.tylohelo.com/api/directmessages?base64encodedMessage={base64_message}"
 
         # Hårdkoda din fungerande Token temporärt för att testa anslutningen
         token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6Inl2ajQ4ViIsIm5hbWVpZCI6IjQyNzNmNTFlLWY4NWItNDM3OC1iODJhLTQ0MjFiMDRlYjlhMiIsImNlcnRzZXJpYWxudW1iZXIiOiJkMDFkNTk1MS02Y2ExLWJlYzEtZDdhYy00MDVhMDYzNjU1ZjUiLCJuYmYiOjE3ODAxNDExNTYsImV4cCI6MTc4MDE0NDc1NiwiaWF0IjoxNzgwMTQxMTU2fQ.UJhWQO4ZYi8isFzHVsLedm5ilwY4JPxAG-V6BeF7Oik"
@@ -851,20 +851,16 @@ class SaunaController:
             'Authorization': f'bearer {token}'
         }
 
-        http_payload = {
-            'base64encodedMessage': base64_message
-        }
-
         _LOGGER.warning("HTTP TX -> Tylö Cloud (%s): Message=%s", desc, base64_message)
 
         try:
-            # Använd Home Assistants inbyggda aiohttp-klient för säkra anrop
             from homeassistant.helpers.aiohttp_client import async_get_clientsession
             session = async_get_clientsession(self._hass)
-            
-            async with session.post(url, data=http_payload, headers=headers, timeout=10) as response:
+
+            # Vi skickar anropet utan 'data=...', eftersom allt ligger i URL-strängen nu
+            async with session.post(url, headers=headers, timeout=10) as response:
                 if response.status == 200:
-                    _LOGGER.warning("HTTP RX <- Tylö Cloud: 200 OK för %s", desc)
+                    _LOGGER.warning("HTTP RX <- Tylö Cloud: 200 OK för %s!", desc)
                 else:
                     _LOGGER.error("HTTP RX <- Tylö Cloud FEL: Status %s för %s", response.status, desc)
         except Exception as e:
