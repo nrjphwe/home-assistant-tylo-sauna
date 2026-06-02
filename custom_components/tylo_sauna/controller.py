@@ -849,7 +849,9 @@ class SaunaController:
             secrets_path = os.path.join(config_dir, "secrets.yaml")
 
             # Läs in secrets som en vanlig Python-dict
-            secrets = load_yaml_config_file(secrets_path)
+            secrets = await self._hass.async_add_executor_job(
+                load_yaml_config_file, secrets_path
+            )
             token = secrets.get("tylo_cloud_token")
 
             if not token:
