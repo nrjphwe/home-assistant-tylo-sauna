@@ -1558,8 +1558,8 @@ class SaunaController:
     # Change async_create_task to async_create_background_task
     self._hass.async_create_background_task(
         self._cloud_websocket_loop(token),
-        name="Tylo Sauna Cloud Loop"
-    )
+            name="Tylo Sauna Cloud Loop"
+        )
 
     async def _cloud_websocket_loop(self, token: str) -> None:
         """WebSocket loop with auto-reconnect."""
