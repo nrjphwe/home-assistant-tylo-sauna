@@ -1550,14 +1550,14 @@ class SaunaController:
             return None
 
     async def async_start_cloud_websocket(self) -> None:
-    """Start the cloud WebSocket connection for telemetry."""
-    token = await self._load_cloud_token()
-    if not token:
-        return
-
-    # Change async_create_task to async_create_background_task
-    self._hass.async_create_background_task(
-        self._cloud_websocket_loop(token),
+        """Start the cloud WebSocket connection for telemetry."""
+        token = await self._load_cloud_token()
+        if not token:
+            return
+        
+        # Change async_create_task to async_create_background_task
+        self._hass.async_create_background_task(
+            self._cloud_websocket_loop(token),
             name="Tylo Sauna Cloud Loop"
         )
 
