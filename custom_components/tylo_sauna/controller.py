@@ -700,7 +700,6 @@ class SaunaController:
         self._hass.create_task(self._async_init_sequence())
         self._hass.create_task(self.async_start_cloud_websocket())  # ← Added 2026-06-03
 
-
     async def _async_init_sequence(self) -> None:
         self._send_probe(HELLO_PAYLOAD, "HELLO 1")
         await asyncio.sleep(0.1)
@@ -1498,73 +1497,73 @@ class SaunaController:
 
         return name, int(flag) if flag is not None else None
 
-# Claude suggestions 2026-06-03
-async def _load_cloud_token(self) -> str | None:
-    """Load Tylo cloud token from secrets.yaml."""
-    try:
-        import os
-        from homeassistant.config import load_yaml_config_file
-        secrets_path = os.path.join(self._hass.config.config_dir, "secrets.yaml")
-        secrets = await self._hass.async_add_executor_job(
-            load_yaml_config_file, secrets_path
-        )
-        token = secrets.get("tylo_cloud_token")
-        if not token:
-            _LOGGER.error("Tylo: 'tylo_cloud_token' not found in secrets.yaml")
-        return token
-    except Exception as e:
-        _LOGGER.error("Tylo: Could not read secrets.yaml: %s", e)
-        return None
-
-async def async_start_cloud_websocket(self) -> None:
-    """Start the cloud WebSocket connection for telemetry."""
-    token = await self._load_cloud_token()
-    if not token:
-        return
-    self._hass.async_create_task(self._cloud_websocket_loop(token))
-
-async def _cloud_websocket_loop(self, token: str) -> None:
-    """WebSocket loop with auto-reconnect."""
-    import base64
-    from homeassistant.helpers.aiohttp_client import async_get_clientsession
-
-    url = "wss://remote.tylohelo.com/api/Socket"
-    headers = {
-        "Origin": "app://localhost",
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
-    }
-
-    while True:
+    # Claude suggestions 2026-06-03
+    async def _load_cloud_token(self) -> str | None:
+        """Load Tylo cloud token from secrets.yaml."""
         try:
-            session = async_get_clientsession(self._hass)
-            _LOGGER.info("Tylo Cloud: connecting to WebSocket...")
-
-            async with session.ws_connect(url, headers=headers, heartbeat=30) as ws:
-                # Authenticate with JWT token as first message
-                await ws.send_str(token)
-                _LOGGER.info("Tylo Cloud: WebSocket connected, sent token")
-
-                async for msg in ws:
-                    if msg.type == 0x1:  # TEXT
-                        if msg.data == "ACCEPTED":
-                            _LOGGER.info("Tylo Cloud: WebSocket authenticated!")
-                            continue
-                        # Decode base64 and feed into telemetry handler
-                        try:
-                            b64 = msg.data.replace('-', '+').replace('_', '/')
-                            b64 += '=' * (4 - len(b64) % 4)
-                            data = base64.b64decode(b64)
-                            self._handle_telemetry(data)
-                        except Exception as e:
-                            _LOGGER.debug("Tylo Cloud: decode error: %s", e)
-                    elif msg.type == 0x2:  # BINARY
-                        self._handle_telemetry(msg.data)
-                    elif msg.type in (0x100, 0x101):  # ERROR, CLOSED
-                        _LOGGER.warning("Tylo Cloud: WebSocket closed: %s", msg.data)
-                        break
-
+            import os
+            from homeassistant.config import load_yaml_config_file
+            secrets_path = os.path.join(self._hass.config.config_dir, "secrets.yaml")
+            secrets = await self._hass.async_add_executor_job(
+                load_yaml_config_file, secrets_path
+            )
+            token = secrets.get("tylo_cloud_token")
+            if not token:
+                _LOGGER.error("Tylo: 'tylo_cloud_token' not found in secrets.yaml")
+            return token
         except Exception as e:
-            _LOGGER.warning("Tylo Cloud: WebSocket error: %s", e)
+            _LOGGER.error("Tylo: Could not read secrets.yaml: %s", e)
+            return None
 
-        _LOGGER.info("Tylo Cloud: reconnecting in 30s...")
-        await asyncio.sleep(30)
+    async def async_start_cloud_websocket(self) -> None:
+        """Start the cloud WebSocket connection for telemetry."""
+        token = await self._load_cloud_token()
+        if not token:
+            return
+        self._hass.async_create_task(self._cloud_websocket_loop(token))
+
+    async def _cloud_websocket_loop(self, token: str) -> None:
+        """WebSocket loop with auto-reconnect."""
+        import base64
+        from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+        url = "wss://remote.tylohelo.com/api/Socket"
+        headers = {
+            "Origin": "app://localhost",
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+        }
+
+        while True:
+            try:
+                session = async_get_clientsession(self._hass)
+                _LOGGER.info("Tylo Cloud: connecting to WebSocket...")
+
+                async with session.ws_connect(url, headers=headers, heartbeat=30) as ws:
+                    # Authenticate with JWT token as first message
+                    await ws.send_str(token)
+                    _LOGGER.info("Tylo Cloud: WebSocket connected, sent token")
+
+                    async for msg in ws:
+                        if msg.type == 0x1:  # TEXT
+                            if msg.data == "ACCEPTED":
+                                _LOGGER.info("Tylo Cloud: WebSocket authenticated!")
+                                continue
+                            # Decode base64 and feed into telemetry handler
+                            try:
+                                b64 = msg.data.replace('-', '+').replace('_', '/')
+                                b64 += '=' * (4 - len(b64) % 4)
+                                data = base64.b64decode(b64)
+                                self._handle_telemetry(data)
+                            except Exception as e:
+                                _LOGGER.debug("Tylo Cloud: decode error: %s", e)
+                        elif msg.type == 0x2:  # BINARY
+                            self._handle_telemetry(msg.data)
+                        elif msg.type in (0x100, 0x101):  # ERROR, CLOSED
+                            _LOGGER.warning("Tylo Cloud: WebSocket closed: %s", msg.data)
+                            break
+
+            except Exception as e:
+                _LOGGER.warning("Tylo Cloud: WebSocket error: %s", e)
+
+            _LOGGER.info("Tylo Cloud: reconnecting in 30s...")
+            await asyncio.sleep(30)
