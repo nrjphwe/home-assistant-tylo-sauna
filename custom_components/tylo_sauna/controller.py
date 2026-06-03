@@ -490,7 +490,7 @@ class SaunaProtocol(asyncio.DatagramProtocol):
         self.controller.datagram_received(data, addr)
 
     def error_received(self, exc: Exception) -> None:
-        _LOGGER.warning("Tylo Sauna UDP error: %s", exc)
+        _LOGGER.debug("Tylo Sauna UDP error: %s", exc)
 
     def connection_lost(self, exc: Exception | None) -> None:
         _LOGGER.info("Tylo Sauna UDP connection lost: %s", exc)
@@ -718,14 +718,14 @@ class SaunaController:
         return (time.monotonic() - float(last)) <= ONLINE_TIMEOUT_S
 
     def start_watchdog(self) -> None:
-        _LOGGER.warning("WATCHDOG: start_watchdog called, already running=%s", self._unsub_watchdog is not None)
+        _LOGGER.debug("WATCHDOG: start_watchdog called, already running=%s", self._unsub_watchdog is not None)
         if self._unsub_watchdog is not None:
             return
 
         async def _tick(_now):
-            _LOGGER.warning("WATCHDOG TICK fired")
+            _LOGGER.debug("WATCHDOG TICK fired")
             online = self.is_online()
-            _LOGGER.warning("WATCHDOG: online=%s cached=%s last_rx_monotonic=%s", online, self._online_cached, self.last_rx_monotonic)
+            _LOGGER.debug("WATCHDOG: online=%s cached=%s last_rx_monotonic=%s", online, self._online_cached, self.last_rx_monotonic)
             now_m = time.monotonic()
 
             publish = False
@@ -823,13 +823,13 @@ class SaunaController:
     def _send(self, payload: bytes, desc: str = "", port: int | None = None) -> None:
         """Den gamla UDP-sändaren (Sparad för att inte bryta intern loggning)."""
         if not self._transport:
-            _LOGGER.warning("Tylo Sauna: transport not ready, cannot send %s", desc or "")
+            _LOGGER.debug("Tylo Sauna: transport not ready, cannot send %s", desc or "")
             return
 
         dst_port = int(self.last_rx_port or self.control_port)
 
         try:
-            _LOGGER.warning("TX %s -> %s:%s (%s)", payload.hex(), self.host, dst_port, desc)
+            _LOGGER.debug("TX %s -> %s:%s (%s)", payload.hex(), self.host, dst_port, desc)
             self._transport.sendto(payload, (self.host, dst_port))
             self.tx_packets += 1
             self._debug_record("tx", (self.host, dst_port), payload, note=desc)
@@ -868,7 +868,7 @@ class SaunaController:
             'User-Agent': 'Tylo Elite/1.5.19 (iPhone; iOS 26.5; Scale/3.00)',
             'Authorization': f'bearer {token}'
         }
-        _LOGGER.warning("HTTP TX -> Tylö Cloud (%s): Message=%s", desc, base64_message)
+        _LOGGER.debug("HTTP TX -> Tylö Cloud (%s): Message=%s", desc, base64_message)
 
         try:
             from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -877,7 +877,7 @@ class SaunaController:
             # Vi skickar anropet utan 'data=...', eftersom allt ligger i URL-strängen nu
             async with session.post(url, headers=headers, timeout=10) as response:
                 if response.status in (200, 204):
-                    _LOGGER.warning("HTTP RX <- Tylö Cloud: Success (Status %s) för %s!", response.status, desc)
+                    _LOGGER.debug("HTTP RX <- Tylö Cloud: Success (Status %s) för %s!", response.status, desc)
                 else:
                     _LOGGER.error("HTTP RX <- Tylö Cloud FEL: Status %s för %s", response.status, desc)
         except Exception as e:
@@ -915,7 +915,7 @@ class SaunaController:
         _LOGGER.info("Tylo Sauna: connection lost: %s", exc)
 
     def datagram_received(self, data: bytes, addr) -> None:
-        _LOGGER.warning("RAW RX from %s: %s", addr, data.hex())  # ← ADD THIS
+        _LOGGER.debug("RAW RX from %s: %s", addr, data.hex())  # ← ADD THIS
         src_ip, src_port = addr
 
         # Broadcast channel (state updates)
@@ -923,18 +923,18 @@ class SaunaController:
             self._handle_broadcast(data)
             return
 
-        _LOGGER.warning("RX step1: telemetry_host=%s host=%s src_ip=%s", self.telemetry_host, self.host, src_ip)
+        _LOGGER.debug("RX step1: telemetry_host=%s host=%s src_ip=%s", self.telemetry_host, self.host, src_ip)
 
         if self.telemetry_host is not None:
             if src_ip != self.telemetry_host:
-                _LOGGER.warning("RX: DROPPED - pinned host mismatch")
+                _LOGGER.debug("RX: DROPPED - pinned host mismatch")
                 return
         else:
             if src_ip == self.host:
-                _LOGGER.warning("RX: accepted - matches configured host")
+                _LOGGER.debug("RX: accepted - matches configured host")
             else:
                 if not _looks_like_tylo_telemetry(data):
-                    _LOGGER.warning("RX: DROPPED - not telemetry-like: %s", data.hex())
+                    _LOGGER.debug("RX: DROPPED - not telemetry-like: %s", data.hex())
                     return
 
         if src_port == 54377:
@@ -1001,7 +1001,7 @@ class SaunaController:
 
                 pkt_guid = _extract_guid_from_payload(data)
                 if self.guid and pkt_guid and pkt_guid != self.guid:
-                    _LOGGER.warning(
+                    _LOGGER.debug(
                         "Tylo Sauna: telemetry GUID mismatch from %s: packet_guid=%s, entry_guid=%s. Ignoring.",
                         src_ip, pkt_guid, self.guid
                     )
@@ -1010,7 +1010,7 @@ class SaunaController:
 
                 # Accept & pin
                 self.telemetry_host = src_ip
-                _LOGGER.warning(
+                _LOGGER.debug(
                     "Tylo Sauna: telemetry received from %s (configured host=%s). "
                     "Pinning telemetry_host=%s (guid_hint=%s).",
                     src_ip, self.host, src_ip, pkt_guid or "n/a"
@@ -1023,7 +1023,7 @@ class SaunaController:
         self.last_rx_port = int(src_port)
 
         self.rx_packets += 1
-        _LOGGER.warning("RX: setting last_rx_monotonic, rx_packets will be %d", self.rx_packets + 1)
+        _LOGGER.debug("RX: setting last_rx_monotonic, rx_packets will be %d", self.rx_packets + 1)
         self.last_rx_monotonic = time.monotonic()
         self.last_rx_dt = dt_util.utcnow()
         self._debug_record("rx", addr, data)
@@ -1110,6 +1110,36 @@ class SaunaController:
 
     def _handle_telemetry(self, data: bytes) -> None:
         changed = False
+        # Cloud WebSocket telemetry (field 2010 KV pairs)
+        CLOUD_STATUS_FIELD = 2010  # d27d
+        top = _pb_collect(data)
+        if CLOUD_STATUS_FIELD in top:
+            for wt, raw in top.get(CLOUD_STATUS_FIELD, []):
+                if wt != 2:
+                    continue
+                msg = _pb_collect(raw)
+                kid = _pb_first_varint(msg, 1)
+                val = _pb_first_varint(msg, 2)
+                if kid is None or val is None:
+                    continue
+                if kid == 0x0A:  # t_set_c
+                    new_val = float(val) / TEMP_SCALE
+                    if new_val != self.t_set_c:
+                        self.t_set_c = new_val
+                        changed = True
+                elif kid == 0x0C:  # t_cur_c
+                    new_val = float(val) / TEMP_SCALE
+                    if new_val != self.t_cur_c:
+                        self.t_cur_c = new_val
+                        changed = True
+                elif kid == 0x11:  # stop_cfg_min
+                    if int(val) != self.stop_cfg_min:
+                        self.stop_cfg_min = int(val)
+                        changed = True
+                elif kid == 0x16:  # stop_rem_min
+                    if int(val) != self.stop_rem_min:
+                        self.stop_rem_min = int(val)
+                        changed = True
 
         def _parse_light_flag_from_bytes(buf: bytes) -> bool | None:
             """Parse the light flag from any buffer by searching known da7d light patterns."""
@@ -1357,7 +1387,7 @@ class SaunaController:
         # Ersätt 'yj4A' med det aktuella Base64-meddelandet om det ändras
         base64_cmd = "wkMCUAs="
 
-        _LOGGER.warning("Triggering Tylö Cloud HEAT ON via background task")
+        _LOGGER.debug("Triggering Tylö Cloud HEAT ON via background task")
         self._hass.create_task(self._send_http(base64_cmd, "HEAT ON"))
 
     def heat_off(self) -> None:
@@ -1370,7 +1400,7 @@ class SaunaController:
         # Ersätt 'yj4A' med det aktuella Base64-meddelandet om det ändras
         base64_cmd = "wkMCUAo="
 
-        _LOGGER.warning("Triggering Tylö Cloud HEAT OFF via background task")
+        _LOGGER.debug("Triggering Tylö Cloud HEAT OFF via background task")
         self._hass.create_task(self._send_http(base64_cmd, "HEAT OFF"))
 
     async def async_set_temperature(self, temp_c: float) -> None:
@@ -1386,7 +1416,7 @@ class SaunaController:
         import base64
         base64_cmd = base64.b64encode(protobuf_packet).decode('utf-8')
 
-        _LOGGER.warning("Setting Tylö Cloud temp to %s°C (Internal val: %s, Base64: %s)", temp_c, raw, base64_cmd)
+        _LOGGER.debug("Setting Tylö Cloud temp to %s°C (Internal val: %s, Base64: %s)", temp_c, raw, base64_cmd)
 
         # 3. Skicka till molnet via vårt fungerande HTTP-anrop
         await self._send_http(base64_cmd, f"SET TEMP {temp_c:.1f}°C")
@@ -1409,7 +1439,7 @@ class SaunaController:
         """Apply a favorite preset as a 'scene' (temp + stop-after + light), optionally start."""
         fav = self.favorites.get(int(slot))
         if not fav or not fav.enabled:
-            _LOGGER.warning("Tylo Sauna: favorite slot %s not available", slot)
+            _LOGGER.debug("Tylo Sauna: favorite slot %s not available", slot)
             return
 
         # Light
@@ -1436,7 +1466,7 @@ class SaunaController:
     async def async_ack_last_fault(self) -> None:
         """Acknowledge the last fault popup (e.g. door cancel) like the official app."""
         if not self.last_fault:
-            _LOGGER.warning("Tylo Sauna: no last_fault to acknowledge")
+            _LOGGER.debug("Tylo Sauna: no last_fault to acknowledge")
             return
         payload = encode_fault_ack(self.last_fault)
         self._send(payload, "ACK_FAULT")
@@ -1446,14 +1476,14 @@ class SaunaController:
     def aroma_eucalyptus_on(self) -> None:
         """Включить ароматизацию (Eucalyptus) — экспериментально."""
         if not getattr(self, "experimental_aroma", False):
-            _LOGGER.warning("Tylo Sauna: aroma command ignored (experimental_aroma disabled)")
+            _LOGGER.debug("Tylo Sauna: aroma command ignored (experimental_aroma disabled)")
             return
         self._send(AROMA_EUCALYPTUS_ON, "AROMA_EUCALYPTUS_ON")
 
     def aroma_eucalyptus_off(self) -> None:
         """Выключить ароматизацию (Eucalyptus) — экспериментально."""
         if not getattr(self, "experimental_aroma", False):
-            _LOGGER.warning("Tylo Sauna: aroma command ignored (experimental_aroma disabled)")
+            #_LOGGER.debug("Tylo Sauna: aroma command ignored (experimental_aroma disabled)")
             return
         self._send(AROMA_EUCALYPTUS_OFF, "AROMA_EUCALYPTUS_OFF")
 
@@ -1559,11 +1589,11 @@ class SaunaController:
                         elif msg.type == 0x2:  # BINARY
                             self._handle_telemetry(msg.data)
                         elif msg.type in (0x100, 0x101):  # ERROR, CLOSED
-                            _LOGGER.warning("Tylo Cloud: WebSocket closed: %s", msg.data)
+                            _LOGGER.debug("Tylo Cloud: WebSocket closed: %s", msg.data)
                             break
 
             except Exception as e:
-                _LOGGER.warning("Tylo Cloud: WebSocket error: %s", e)
+                _LOGGER.debug("Tylo Cloud: WebSocket error: %s", e)
 
             _LOGGER.info("Tylo Cloud: reconnecting in 30s...")
             await asyncio.sleep(30)
