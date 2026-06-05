@@ -1539,7 +1539,7 @@ class SaunaController:
         token = await self._load_cloud_token()
         if not token:
             return
-        
+
         # Change this to an untracked background task:
         self._hass.async_create_background_task(
             self._cloud_websocket_loop(token),
@@ -1550,6 +1550,7 @@ class SaunaController:
         """WebSocket loop with auto-reconnect."""
         import base64
         from homeassistant.helpers.aiohttp_client import async_get_clientsession
+        from aiohttp import WSMsgType, ClientConnectionResetError, ClientError
 
         url = "wss://remote.tylohelo.com/api/Socket"
         headers = {
@@ -1562,17 +1563,17 @@ class SaunaController:
                 session = async_get_clientsession(self._hass)
                 _LOGGER.info("Tylo Cloud: connecting to WebSocket...")
 
-                async with session.ws_connect(url, headers=headers, heartbeat=30) as ws:
-                    # Authenticate with JWT token as first message
+                async with session.ws_connect(
+                    url, headers=headers, heartbeat=None, timeout=30
+                ) as ws:
                     await ws.send_str(token)
-                    _LOGGER.info("Tylo Cloud: WebSocket connected, sent token")
+                    _LOGGER.info("Tylo Cloud: WebSocket connected and authenticated")
 
                     async for msg in ws:
-                        if msg.type == 0x1:  # TEXT
+                        if msg.type == WSMsgType.TEXT:
                             if msg.data == "ACCEPTED":
                                 _LOGGER.info("Tylo Cloud: WebSocket authenticated!")
                                 continue
-                            # Decode base64 and feed into telemetry handler
                             try:
                                 b64 = msg.data.replace('-', '+').replace('_', '/')
                                 b64 += '=' * (4 - len(b64) % 4)
@@ -1580,14 +1581,18 @@ class SaunaController:
                                 self._handle_telemetry(data)
                             except Exception as e:
                                 _LOGGER.debug("Tylo Cloud: decode error: %s", e)
-                        elif msg.type == 0x2:  # BINARY
+                        elif msg.type == WSMsgType.BINARY:
                             self._handle_telemetry(msg.data)
-                        elif msg.type in (0x100, 0x101):  # ERROR, CLOSED
+                        elif msg.type in (WSMsgType.ERROR, WSMsgType.CLOSED):
                             _LOGGER.debug("Tylo Cloud: WebSocket closed: %s", msg.data)
                             break
 
-            except Exception as e:
+            except ClientConnectionResetError:
+                _LOGGER.debug("Tylo Cloud: connection reset, reconnecting...")
+            except ClientError as e:
                 _LOGGER.warning("Tylo Cloud: WebSocket error: %s", e)
+            except Exception as e:
+                _LOGGER.warning("Tylo Cloud: unexpected error: %s", e)
 
             _LOGGER.info("Tylo Cloud: reconnecting in 30s...")
             await asyncio.sleep(30)
