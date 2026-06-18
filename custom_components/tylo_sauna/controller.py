@@ -880,10 +880,11 @@ class SaunaController:
 
             # Vi skickar anropet utan 'data=...', eftersom allt ligger i URL-strängen nu
             async with session.post(url, headers=headers, timeout=10) as response:
+                body = await response.text()
                 if response.status in (200, 204):
                     _LOGGER.debug("HTTP RX <- Tylö Cloud: Success (Status %s) för %s!", response.status, desc)
                 else:
-                    _LOGGER.error("HTTP RX <- Tylö Cloud FEL: Status %s för %s", response.status, desc)
+                    _LOGGER.error("HTTP RX <- Tylö Cloud FEL: Status %s för %s, Body: %s", response.status, desc, body)
         except Exception as e:
             _LOGGER.error("Det gick inte att skicka HTTP-anrop till Tylö: %s", e)
 
