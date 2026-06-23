@@ -1418,16 +1418,21 @@ class SaunaController:
         self._send(HEAT_AUX_PAYLOAD, "STANDBY AUX")
 
     async def async_set_stop_after(self, minutes: int) -> None:
-        import base64
         m = int(minutes)
         var = _encode_varint(m)
         p1 = bytes.fromhex("d24105080e10") + var
         p2 = bytes.fromhex("d23e020801")
-        b64_1 = base64.b64encode(p1).decode('utf-8')
-        b64_2 = base64.b64encode(p2).decode('utf-8')
-        await self._send_http(b64_1, f"SETSTOP {m} min")
+
+        self._send(p1, f"SETSTOP {m} min")
         await asyncio.sleep(0.5)
-        await self._send_http(b64_2, "SETSTOP aux")
+        self._send(p2, "SETSTOP aux")
+
+        #import base64
+        #b64_1 = base64.b64encode(p1).decode('utf-8')
+        #b64_2 = base64.b64encode(p2).decode('utf-8')
+        #await self._send_http(b64_1, f"SETSTOP {m} min")
+        #await asyncio.sleep(0.5)
+        #await self._send_http(b64_2, "SETSTOP aux")
 
     async def async_apply_favorite(self, slot: int, start: bool = False) -> None:
         """Apply a favorite preset as a 'scene' (temp + stop-after + light), optionally start."""
