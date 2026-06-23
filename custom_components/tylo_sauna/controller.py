@@ -1367,28 +1367,28 @@ class SaunaController:
     def heat_on(self):
         self.ensure_session()
         # 1. Vi kan låta den gamla loggningen/UDP vara kvar om du vill (eller kommentera bort)
-        # self._send(HEAT_ON_PAYLOAD, "HEAT ON")
-        # self._send(HEAT_AUX_PAYLOAD, "HEAT AUX")
+        self._send(HEAT_ON_PAYLOAD, "HEAT ON")
+        self._send(HEAT_AUX_PAYLOAD, "HEAT AUX")
 
         # 2. Skjut iväg det nya HTTPS POST-anropet till Tylö Cloud i bakgrunden
         # Ersätt 'yj4A' med det aktuella Base64-meddelandet om det ändras
-        base64_cmd = "wkMCUAs="
+        #base64_cmd = "wkMCUAs="
 
-        _LOGGER.debug("Triggering Tylö Cloud HEAT ON via background task")
-        self._hass.create_task(self._send_http(base64_cmd, "HEAT ON"))
+        #_LOGGER.debug("Triggering Tylö Cloud HEAT ON via background task")
+        #self._hass.create_task(self._send_http(base64_cmd, "HEAT ON"))
 
     def heat_off(self) -> None:
         self.ensure_session()
         # 1. Vi kan låta den gamla loggningen/UDP vara kvar om du vill (eller kommentera bort)
-        # self._send(HEAT_ON_PAYLOAD, "HEAT OFF")
-        # self._send(HEAT_AUX_PAYLOAD, "HEAT AUX")
+        self._send(HEAT_OFF_PAYLOAD, "HEAT OFF")
+        self._send(HEAT_AUX_PAYLOAD, "HEAT AUX")
 
         # 2. Skjut iväg det nya HTTPS POST-anropet till Tylö Cloud i bakgrunden
         # Ersätt 'yj4A' med det aktuella Base64-meddelandet om det ändras
-        base64_cmd = "wkMCUAo="
+        #base64_cmd = "wkMCUAo="
 
-        _LOGGER.debug("Triggering Tylö Cloud HEAT OFF via background task")
-        self._hass.create_task(self._send_http(base64_cmd, "HEAT OFF"))
+        #_LOGGER.debug("Triggering Tylö Cloud HEAT OFF via background task")
+        #self._hass.create_task(self._send_http(base64_cmd, "HEAT OFF"))
 
     async def async_set_temperature(self, temp_c: float) -> None:
         """Räknar ut och skickar ny måltemperatur till Tylö Cloud."""
@@ -1399,14 +1399,18 @@ class SaunaController:
         prefix = bytes.fromhex("d24105080a10")
         protobuf_packet = prefix + _encode_varint(raw)
 
-        # 2. Gör om till Base64-strängen som molnet vill ha
-        import base64
-        base64_cmd = base64.b64encode(protobuf_packet).decode('utf-8')
+        _LOGGER.debug("Setting Tylo temp to %s°C (Internal val: %s)", temp_c, raw)
+        # Send locally via UDP instead of cloud HTTP
+        self._send(protobuf_packet, f"SET TEMP {temp_c:.1f}°C")
 
-        _LOGGER.debug("Setting Tylö Cloud temp to %s°C (Internal val: %s, Base64: %s)", temp_c, raw, base64_cmd)
+        # 2. Gör om till Base64-strängen som molnet vill ha
+        #import base64
+        #base64_cmd = base64.b64encode(protobuf_packet).decode('utf-8')
+
+        #_LOGGER.debug("Setting Tylö Cloud temp to %s°C (Internal val: %s, Base64: %s)", temp_c, raw, base64_cmd)
 
         # 3. Skicka till molnet via vårt fungerande HTTP-anrop
-        await self._send_http(base64_cmd, f"SET TEMP {temp_c:.1f}°C")
+        #await self._send_http(base64_cmd, f"SET TEMP {temp_c:.1f}°C")
 
     def standby(self) -> None:
         """Activate standby mode (reduced temperature heating)."""
