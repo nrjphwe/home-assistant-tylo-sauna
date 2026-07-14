@@ -699,10 +699,11 @@ class SaunaController:
         self.start_watchdog()
         self._hass.create_task(self._async_init_sequence())
         # self._hass.create_task(self.async_start_cloud_websocket())  # ← Added 2026-06-03
-        self._hass.async_create_background_task(
-            self.async_start_cloud_websocket(),
-            name="Tylo Sauna Cloud WebSocket"
-        )
+        # Cloud WebSocket disabled — all control and telemetry via local UDP 2026-07-14
+        # self._hass.async_create_background_task(
+        #    self.async_start_cloud_websocket(),
+        #     name="Tylo Sauna Cloud WebSocket"
+        #)
 
     async def _async_init_sequence(self) -> None:
         self._send_probe(HELLO_PAYLOAD, "HELLO 1")
