@@ -1558,6 +1558,76 @@ class SaunaController:
 
     async def _cloud_websocket_loop(self, token: str) -> None:
         """WebSocket loop with auto-reconnect."""
+        import asyncio
+        import base64
+        import logging
+        from homeassistant.helpers.aiohttp_client import async_get_clientsession
+        from aiohttp import WSMsgType, ClientConnectionResetError, ClientError
+
+        _LOGGER = logging.getLogger(__name__)
+
+        url = "wss://remote.tylohelo.com/api/Socket"
+        headers = {
+            "Origin": "app://localhost",
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+        }
+
+        # Dynamic backoff to avoid strict, heavy 30s delays on temporary blips
+        backoff_delay = 2.0  
+
+        while True:
+            try:
+                session = async_get_clientsession(self._hass)
+                _LOGGER.info("Tylo Cloud: connecting to WebSocket...")
+
+                # Set heartbeat to 20 seconds to keep the cloud connection alive
+                async with session.ws_connect(
+                    url, headers=headers, heartbeat=20.0, timeout=30
+                ) as ws:
+                    await ws.send_str(token)
+                    _LOGGER.info("Tylo Cloud: WebSocket connected and authenticated")
+                    
+                    # Connection established successfully, reset backoff
+                    backoff_delay = 2.0  
+
+                    async for msg in ws:
+                        if msg.type == WSMsgType.TEXT:
+                            if msg.data == "ACCEPTED":
+                                _LOGGER.info("Tylo Cloud: WebSocket authenticated!")
+                                continue
+                            
+                            try:
+                                # Normalizing base64 padding and decoding
+                                b64 = msg.data.replace('-', '+').replace('_', '/')
+                                b64 += '=' * (4 - len(b64) % 4)
+                                data = base64.b64decode(b64)
+                                self._handle_telemetry(data)
+                            except Exception as e:
+                                _LOGGER.debug("Tylo Cloud: decode error: %s", e)
+
+                        elif msg.type == WSMsgType.BINARY:
+                            try:
+                                self._handle_telemetry(msg.data)
+                            except Exception as e:
+                                _LOGGER.debug("Tylo Cloud: telemetry handling error: %s", e)
+
+                        elif msg.type in (WSMsgType.ERROR, WSMsgType.CLOSED, WSMsgType.CLOSE, WSMsgType.CLOSING):
+                            _LOGGER.debug("Tylo Cloud: WebSocket closing/closed: %s", msg.data)
+                            break
+
+            except ClientConnectionResetError:
+                _LOGGER.debug("Tylo Cloud: connection reset, reconnecting...")
+            except ClientError as e:
+                _LOGGER.warning("Tylo Cloud: WebSocket error: %s", e)
+            except asyncio.TimeoutError:
+                _LOGGER.warning("Tylo Cloud: connection timed out.")
+            except Exception as e:
+                _LOGGER.exception("Tylo Cloud: unexpected error in loop: %s", e)
+
+            _LOGGER.info("Tylo Cloud: reconnecting in %.1fs...", backoff_delay)
+            await asyncio.sleep(backoff_delay)
+            backoff_delay = min(backoff_delay * 2.0, 60.0)
+        """WebSocket loop with auto-reconnect."""
         import base64
         from homeassistant.helpers.aiohttp_client import async_get_clientsession
         from aiohttp import WSMsgType, ClientConnectionResetError, ClientError
