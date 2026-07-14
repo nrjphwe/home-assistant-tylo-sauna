@@ -1572,7 +1572,6 @@ class SaunaController:
             "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
         }
 
-        # Dynamic backoff to avoid strict, heavy 30s delays on temporary blips
         backoff_delay = 2.0  
 
         while True:
@@ -1580,14 +1579,13 @@ class SaunaController:
                 session = async_get_clientsession(self._hass)
                 _LOGGER.info("Tylo Cloud: connecting to WebSocket...")
 
-                # Set heartbeat to 20 seconds to keep the cloud connection alive
                 async with session.ws_connect(
                     url, headers=headers, heartbeat=20.0, timeout=30
                 ) as ws:
+                    # Let's send the token
                     await ws.send_str(token)
-                    _LOGGER.info("Tylo Cloud: WebSocket connected and authenticated")
+                    _LOGGER.info("Tylo Cloud: WebSocket connected and token sent.")
                     
-                    # Connection established successfully, reset backoff
                     backoff_delay = 2.0  
 
                     async for msg in ws:
@@ -1597,7 +1595,6 @@ class SaunaController:
                                 continue
                             
                             try:
-                                # Normalizing base64 padding and decoding
                                 b64 = msg.data.replace('-', '+').replace('_', '/')
                                 b64 += '=' * (4 - len(b64) % 4)
                                 data = base64.b64decode(b64)
@@ -1609,11 +1606,18 @@ class SaunaController:
                             try:
                                 self._handle_telemetry(msg.data)
                             except Exception as e:
-                                _LOGGER.debug("Tylo Cloud: telemetry handling error: %s", e)
+                                _LOGGER.debug("Tylo Cloud: telemetry error: %s", e)
 
                         elif msg.type in (WSMsgType.ERROR, WSMsgType.CLOSED, WSMsgType.CLOSE, WSMsgType.CLOSING):
-                            _LOGGER.debug("Tylo Cloud: WebSocket closing/closed: %s", msg.data)
+                            _LOGGER.warning("Tylo Cloud: WebSocket closed by server with type: %s", msg.type)
                             break
+
+                    # If we fall out of the `async for` loop without an exception, the socket closed gracefully
+                    _LOGGER.warning(
+                        "Tylo Cloud: Connection closed cleanly by remote host. Close code: %s, Close message: %s", 
+                        ws.close_code, 
+                        ws.exception()
+                    )
 
             except ClientConnectionResetError:
                 _LOGGER.debug("Tylo Cloud: connection reset, reconnecting...")
@@ -1627,52 +1631,3 @@ class SaunaController:
             _LOGGER.info("Tylo Cloud: reconnecting in %.1fs...", backoff_delay)
             await asyncio.sleep(backoff_delay)
             backoff_delay = min(backoff_delay * 2.0, 60.0)
-        """WebSocket loop with auto-reconnect."""
-        import base64
-        from homeassistant.helpers.aiohttp_client import async_get_clientsession
-        from aiohttp import WSMsgType, ClientConnectionResetError, ClientError
-
-        url = "wss://remote.tylohelo.com/api/Socket"
-        headers = {
-            "Origin": "app://localhost",
-            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
-        }
-
-        while True:
-            try:
-                session = async_get_clientsession(self._hass)
-                _LOGGER.info("Tylo Cloud: connecting to WebSocket...")
-
-                async with session.ws_connect(
-                    url, headers=headers, heartbeat=None, timeout=30
-                ) as ws:
-                    await ws.send_str(token)
-                    _LOGGER.info("Tylo Cloud: WebSocket connected and authenticated")
-
-                    async for msg in ws:
-                        if msg.type == WSMsgType.TEXT:
-                            if msg.data == "ACCEPTED":
-                                _LOGGER.info("Tylo Cloud: WebSocket authenticated!")
-                                continue
-                            try:
-                                b64 = msg.data.replace('-', '+').replace('_', '/')
-                                b64 += '=' * (4 - len(b64) % 4)
-                                data = base64.b64decode(b64)
-                                self._handle_telemetry(data)
-                            except Exception as e:
-                                _LOGGER.debug("Tylo Cloud: decode error: %s", e)
-                        elif msg.type == WSMsgType.BINARY:
-                            self._handle_telemetry(msg.data)
-                        elif msg.type in (WSMsgType.ERROR, WSMsgType.CLOSED):
-                            _LOGGER.debug("Tylo Cloud: WebSocket closed: %s", msg.data)
-                            break
-
-            except ClientConnectionResetError:
-                _LOGGER.debug("Tylo Cloud: connection reset, reconnecting...")
-            except ClientError as e:
-                _LOGGER.warning("Tylo Cloud: WebSocket error: %s", e)
-            except Exception as e:
-                _LOGGER.warning("Tylo Cloud: unexpected error: %s", e)
-
-            _LOGGER.info("Tylo Cloud: reconnecting in 30s...")
-            await asyncio.sleep(30)
